@@ -4,7 +4,7 @@ from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 
 
 class LlamaForBlur(nn.Module):
-    def __init__(self, args):
+    def __init__(self, *args):
         """
         Wrapper for LLaMA 2 optimized for BLUR unlearning/evaluation.
         """
@@ -70,5 +70,5 @@ class LlamaForBlur(nn.Module):
         self.get_tokenizer().save_pretrained(path)
 
 
-def get_model(args):
-    return LlamaForBlur(args)
+def get_model(*args):
+    return LlamaForBlur(*args)
