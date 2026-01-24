@@ -1,0 +1,253 @@
+"""
+Inference Pipeline for LLaMA models after unlearning.
+Generates responses and saves them to a file for later evaluation.
+"""
+
+import argparse
+import json
+import os
+import sys
+from typing import Dict, List
+
+import torch
+from tqdm import tqdm
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def load_data(data_path: str) -> List[Dict]:
+    """Load evaluation data from JSON or CSV file."""
+    if data_path.endswith('.json'):
+        with open(data_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    elif data_path.endswith('.csv'):
+        import csv
+        data = []
+        with open(data_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append(row)
+    else:
+        raise ValueError(f"Unsupported file format: {data_path}")
+    return data
+
+
+def load_model_and_tokenizer(
+    model_path: str,
+    device: str = "cuda",
+    use_wrapper: bool = False,
+):
+    """Load model and tokenizer in eval mode."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    
+    print(f"Loading model from: {model_path}")
+    is_local = os.path.exists(model_path)
+    
+    if use_wrapper:
+        from models.model_llama import LlamaForBlur
+        
+        class Args:
+            arch = model_path
+        
+        model_wrapper = LlamaForBlur(Args())
+        model = model_wrapper.model
+        tokenizer = model_wrapper.get_tokenizer()
+        
+        if is_local:
+            for ckpt_name in ["pytorch_model.bin", "model.safetensors"]:
+                checkpoint_file = os.path.join(model_path, ckpt_name)
+                if os.path.exists(checkpoint_file):
+                    print(f"Loading checkpoint from {checkpoint_file}")
+                    state_dict = torch.load(checkpoint_file, map_location="cpu")
+                    model.load_state_dict(state_dict, strict=False)
+                    break
+    else:
+        if not is_local and model_path.startswith('/'):
+            raise ValueError(f"Local path '{model_path}' does not exist.")
+        
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path, local_files_only=is_local, trust_remote_code=True
+        )
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "left"
+        
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+            dtype = torch.bfloat16
+        elif torch.cuda.is_available():
+            dtype = torch.float16
+        else:
+            dtype = torch.float32
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=dtype,
+            device_map="auto" if device == "cuda" and torch.cuda.is_available() else None,
+            local_files_only=is_local,
+            trust_remote_code=True,
+        )
+    
+    model.eval()
+    dev = model.device if hasattr(model, 'device') else next(model.parameters()).device
+    print(f"Model loaded. Device: {dev}")
+    
+    return model, tokenizer
+
+
+def run_inference(
+    model,
+    tokenizer,
+    prompts: List[str],
+    max_new_tokens: int = 64,
+    temperature: float = 1.0,
+    batch_size: int = 4,
+) -> List[str]:
+    """Run inference and return generated responses."""
+    all_responses = []
+    device = model.device if hasattr(model, 'device') else next(model.parameters()).device
+    
+    with torch.no_grad():
+        for i in tqdm(range(0, len(prompts), batch_size), desc="Generating"):
+            batch_prompts = prompts[i:i + batch_size]
+            
+            inputs = tokenizer(
+                batch_prompts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=512,
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+            
+            for j, output in enumerate(outputs):
+                input_length = inputs["input_ids"][j].shape[0]
+                generated_tokens = output[input_length:]
+                response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+                all_responses.append(response.strip())
+    
+    return all_responses
+
+
+def save_results(results: List[Dict], output_path: str) -> None:
+    """Save results to JSON file."""
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"Results saved to: {output_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate responses with LLaMA model")
+    parser.add_argument("--model_path", type=str, default="meta-llama/Llama-2-7b-hf",
+                        help="Path to model or HuggingFace model ID")
+    parser.add_argument("--data_path", type=str, required=True,
+                        help="Path to evaluation data (JSON/CSV)")
+    parser.add_argument("--output_path", type=str, default="results/responses.json",
+                        help="Path to save generated responses")
+    parser.add_argument("--max_new_tokens", type=int, default=64)
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--use_wrapper", action="store_true",
+                        help="Use LlamaForBlur wrapper")
+    parser.add_argument("--compute_metrics", action="store_true",
+                        help="Also compute metrics after generation")
+    parser.add_argument("--judge_model_path", type=str, default=None,
+                        help="Path to fine-tuned judge model (for LLM-as-Judge)")
+    parser.add_argument("--judge_batch_size", type=int, default=4,
+                        help="Batch size for judge model")
+    
+    args = parser.parse_args()
+    
+    if args.device == "cuda" and not torch.cuda.is_available():
+        print("CUDA not available, using CPU")
+        args.device = "cpu"
+    
+    # Load data
+    print(f"Loading data from: {args.data_path}")
+    data = load_data(args.data_path)
+    print(f"Loaded {len(data)} samples")
+    
+    # Load model
+    model, tokenizer = load_model_and_tokenizer(
+        args.model_path, args.device, args.use_wrapper
+    )
+    
+    # Run inference
+    prompts = [item["prompt"] for item in data]
+    print("\nGenerating responses...")
+    responses = run_inference(
+        model, tokenizer, prompts,
+        args.max_new_tokens, args.temperature, args.batch_size
+    )
+    
+    # Build results
+    results = []
+    for item, response in zip(data, responses):
+        results.append({
+            "question": item["prompt"],
+            "answer": response,
+            "ground_truth": item["answer"],
+            "split": item.get("split", "retain"),
+        })
+    
+    # Save results
+    save_results(results, args.output_path)
+
+    # Optionally compute metrics
+    if args.compute_metrics:
+        from Inference.compute_metrics import compute_and_print_metrics, run_llm_judge
+        # Standard metrics
+        compute_and_print_metrics(args.output_path)
+        # LLM-as-Judge if judge_model_path provided
+        if args.judge_model_path:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            is_local = os.path.exists(args.judge_model_path)
+            judge_tokenizer = AutoTokenizer.from_pretrained(
+                args.judge_model_path, local_files_only=is_local, trust_remote_code=True
+            )
+            if judge_tokenizer.pad_token is None:
+                judge_tokenizer.pad_token = judge_tokenizer.eos_token
+            judge_tokenizer.padding_side = "left"
+            import torch
+            if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+                dtype = torch.bfloat16
+            elif torch.cuda.is_available():
+                dtype = torch.float16
+            else:
+                dtype = torch.float32
+            judge_model = AutoModelForCausalLM.from_pretrained(
+                args.judge_model_path,
+                torch_dtype=dtype,
+                device_map="auto" if args.device == "cuda" and torch.cuda.is_available() else None,
+                local_files_only=is_local,
+                trust_remote_code=True,
+            )
+            judge_model.eval()
+            print("\nRunning LLM-as-Judge evaluation...")
+            results_with_judge = run_llm_judge(
+                results,
+                judge_model,
+                judge_tokenizer,
+                batch_size=args.judge_batch_size
+            )
+            # Save results with judge verdicts
+            judge_output_path = args.output_path.replace(".json", "_judged.json")
+            save_results(results_with_judge, judge_output_path)
+            # Print metrics for judged results
+            compute_and_print_metrics(judge_output_path)
+
+    return results
+
+
+if __name__ == "__main__":
+    main()
