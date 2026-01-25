@@ -1,5 +1,5 @@
 from models.model_llama import LlamaForBlur, get_model
-from trainer.llama_blur_finetune import get_blur_mapped
+from mapped_datasets.blur_rwku import get_blur_mapped
 import torch 
 from transformers import StoppingCriteria, StoppingCriteriaList
 
