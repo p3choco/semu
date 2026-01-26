@@ -1,6 +1,4 @@
 
-
-
 ---
  `Skryg/llama2-7b-trivia-qa`
 

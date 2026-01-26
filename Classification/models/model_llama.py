@@ -1,19 +1,15 @@
 import torch
 import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
-
-
+from peft import PeftModel
 class LlamaForBlur(nn.Module):
-    def __init__(self, *args):
+    def __init__(self, **kwargs):
         """
         Wrapper for LLaMA 2 optimized for BLUR unlearning/evaluation.
         """
         super(LlamaForBlur, self).__init__()
 
-        if hasattr(args, 'arch') and '13b' in args.arch.lower():
-            self.model_name = "meta-llama/Llama-2-13b-hf"
-        else:
-            self.model_name = "meta-llama/Llama-2-7b-hf"
+        self.model_name = "meta-llama/Llama-2-7b-hf"
 
         print(f"--> Initializing LLaMA model: {self.model_name}")
 
@@ -26,12 +22,21 @@ class LlamaForBlur(nn.Module):
                 torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
                 device_map="auto"
             )
+            
+            finetune = kwargs.get("finetune", None)
+
+            if finetune and 'trivia_qa' in str(finetune).lower():
+                self.model = PeftModel.from_pretrained(
+                    self.model, "Skryg/llama2-7b-trivia-qa")
+                    
         except Exception as e:
             print(f"Error loading model: {e}")
             raise e
-
-        self.model.gradient_checkpointing_enable()
-        self.model.enable_input_require_grads()
+        
+        if kwargs.get("train", False):
+            self.model.gradient_checkpointing_enable()
+            self.model.enable_input_require_grads()
+        self.model.eval()
 
     def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
         """
@@ -70,5 +75,5 @@ class LlamaForBlur(nn.Module):
         self.get_tokenizer().save_pretrained(path)
 
 
-def get_model(*args):
-    return LlamaForBlur(*args)
+def get_model(**kwargs):
+    return LlamaForBlur(**kwargs)
