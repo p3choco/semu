@@ -1,0 +1,8 @@
+# models
+*.safetensors
+*.bin
+checkpoint-*/
+adapter-*/
+outputs/
+
+__pycache__/
