@@ -165,6 +165,12 @@ def main():
                         help="Path to fine-tuned judge model (for LLM-as-Judge)")
     parser.add_argument("--judge_batch_size", type=int, default=4,
                         help="Batch size for judge model")
+    parser.add_argument("--perplexity_gap_model_path", type=str, default=None,
+                        help="Path to model for Perplexity gap evaluation")
+    parser.add_argument("--perplexity_gap_threshold", type=float, default=0.3,
+                        help="Threshold for Perplexity gap success")
+    parser.add_argument("--perplexity_gap_max_length", type=int, default=512,
+                        help="Max sequence length for Perplexity gap computation")
     
     args = parser.parse_args()
     
@@ -205,9 +211,23 @@ def main():
 
     # Optionally compute metrics
     if args.compute_metrics:
-        from Inference.compute_metrics import compute_and_print_metrics, run_llm_judge
-        # Standard metrics
-        compute_and_print_metrics(args.output_path)
+        from Inference.compute_metrics import compute_and_print_metrics, run_llm_judge, run_perplexity_gap_evaluation
+        mia_results = None
+        # Perplexity gap if model provided
+        if args.perplexity_gap_model_path:
+            from Inference.compute_metrics import run_perplexity_gap_evaluation
+            model_pg, tokenizer_pg = load_model_and_tokenizer(args.perplexity_gap_model_path, args.device)
+            forget_items = [item for item in results if item.get("split", "retain").lower() == "forget"]
+            retain_items = [item for item in results if item.get("split", "retain").lower() == "retain"]
+            mia_results = run_perplexity_gap_evaluation(
+                model_pg, tokenizer_pg,
+                forget_items, retain_items,
+                device=args.device,
+                threshold=args.perplexity_gap_threshold,
+                max_length=args.perplexity_gap_max_length,
+            )
+        # Standard metrics (with Perplexity gap if calculated)
+        compute_and_print_metrics(args.output_path, mia_results=mia_results)
         # LLM-as-Judge if judge_model_path provided
         if args.judge_model_path:
             from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -243,8 +263,8 @@ def main():
             # Save results with judge verdicts
             judge_output_path = args.output_path.replace(".json", "_judged.json")
             save_results(results_with_judge, judge_output_path)
-            # Print metrics for judged results
-            compute_and_print_metrics(judge_output_path)
+            # Print metrics for judged results (with Perplexity gap if calculated)
+            compute_and_print_metrics(judge_output_path, mia_results=mia_results)
 
     return results
 
