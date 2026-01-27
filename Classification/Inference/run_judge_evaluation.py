@@ -23,12 +23,12 @@ from Inference.compute_metrics import (
 
 def load_judge_model(model_path: str, device: str = "cuda"):
     """Load the judge model (fine-tuned model)."""
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
     print(f"Loading judge model from: {model_path}")
-    
+
     is_local = os.path.exists(model_path)
-    
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_path, 
         local_files_only=is_local,
@@ -37,25 +37,25 @@ def load_judge_model(model_path: str, device: str = "cuda"):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
-    
-    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-        dtype = torch.bfloat16
-    elif torch.cuda.is_available():
-        dtype = torch.float16
-    else:
-        dtype = torch.float32
-    
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
+
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=dtype,
-        device_map="auto" if device == "cuda" and torch.cuda.is_available() else None,
+        quantization_config=bnb_config,
+        device_map="auto",
         local_files_only=is_local,
         trust_remote_code=True,
     )
-    
+
     model.eval()
     print(f"Judge model loaded. Device: {next(model.parameters()).device}")
-    
+
     return model, tokenizer
 
 

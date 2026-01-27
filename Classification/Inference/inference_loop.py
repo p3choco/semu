@@ -38,7 +38,7 @@ def load_model_and_tokenizer(
     use_wrapper: bool = False,
 ):
     """Load model and tokenizer in eval mode."""
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     
     print(f"Loading model from: {model_path}")
     is_local = os.path.exists(model_path)
@@ -71,18 +71,19 @@ def load_model_and_tokenizer(
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "left"
-        
-        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-            dtype = torch.bfloat16
-        elif torch.cuda.is_available():
-            dtype = torch.float16
-        else:
-            dtype = torch.float32
-        
+
+        # 4-bit quantization config
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
-            torch_dtype=dtype,
-            device_map="auto" if device == "cuda" and torch.cuda.is_available() else None,
+            quantization_config=bnb_config,
+            device_map="auto",
             local_files_only=is_local,
             trust_remote_code=True,
         )
@@ -230,7 +231,7 @@ def main():
         compute_and_print_metrics(args.output_path, mia_results=mia_results)
         # LLM-as-Judge if judge_model_path provided
         if args.judge_model_path:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
             is_local = os.path.exists(args.judge_model_path)
             judge_tokenizer = AutoTokenizer.from_pretrained(
                 args.judge_model_path, local_files_only=is_local, trust_remote_code=True
@@ -238,16 +239,18 @@ def main():
             if judge_tokenizer.pad_token is None:
                 judge_tokenizer.pad_token = judge_tokenizer.eos_token
             judge_tokenizer.padding_side = "left"
-            import torch
-            if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-                dtype = torch.bfloat16
-            elif torch.cuda.is_available():
-                dtype = torch.float16
-            else:
-                dtype = torch.float32
+
+            # 4-bit quantization config for judge model
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16,
+                bnb_4bit_use_double_quant=True,
+            )
+
             judge_model = AutoModelForCausalLM.from_pretrained(
                 args.judge_model_path,
-                torch_dtype=dtype,
+                quantization_config=bnb_config,
                 device_map="auto" if args.device == "cuda" and torch.cuda.is_available() else None,
                 local_files_only=is_local,
                 trust_remote_code=True,
@@ -267,7 +270,6 @@ def main():
             compute_and_print_metrics(judge_output_path, mia_results=mia_results)
 
     return results
-
 
 if __name__ == "__main__":
     main()

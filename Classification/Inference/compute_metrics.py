@@ -10,7 +10,6 @@ import json
 import os
 from typing import Dict, List, Optional
 
-
 # ROUGE-L 
 def lcs_length(x: List[str], y: List[str]) -> int:
     """Compute length of Longest Common Subsequence."""
@@ -398,10 +397,10 @@ def compute_and_print_metrics(results_path: str, output_path: str = None, mia_re
                              threshold: float = 0.3, max_length: int = 512) -> Dict:
     """Load, compute, print, save."""
     results = load_results(results_path)
-    # Jeśli podano model do Perplexity gap, licz na bieżąco
+    # If a model for Perplexity gap is provided, compute on the fly
     if perplexity_gap_model_path:
         from Inference.compute_metrics import run_perplexity_gap_evaluation
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         import torch
         is_local = os.path.exists(perplexity_gap_model_path)
         tokenizer = AutoTokenizer.from_pretrained(
@@ -409,14 +408,18 @@ def compute_and_print_metrics(results_path: str, output_path: str = None, mia_re
         )
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
-        if torch.cuda.is_available():
-            dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        else:
-            dtype = torch.float32
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+
         model = AutoModelForCausalLM.from_pretrained(
             perplexity_gap_model_path,
-            torch_dtype=dtype,
-            device_map="auto" if device == "cuda" and torch.cuda.is_available() else None,
+            quantization_config=bnb_config,
+            device_map="auto",
             local_files_only=is_local,
             trust_remote_code=True,
         )

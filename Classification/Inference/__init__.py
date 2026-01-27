@@ -5,7 +5,7 @@ Inference module for LLaMA unlearning evaluation.
 from .compute_metrics import (
     compute_metrics,
     compute_rouge_l,
-    run_mia_evaluation,
+    run_perplexity_gap_evaluation,
     run_llm_judge,
     load_results,
     print_results_table,
