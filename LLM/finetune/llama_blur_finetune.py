@@ -1,13 +1,11 @@
-from transformers import Trainer, DataCollatorForLanguageModeling
-from models.model_llama import LlamaForBlur
+from transformers import Trainer,TrainingArguments, DataCollatorForLanguageModeling
 from peft import LoraConfig, get_peft_model
-from transformers import TrainingArguments
-from models.model_llama import LlamaForBlur 
+from models.model_llama import LlamaForBlur
 
 def finetune_model(llama_for_blur: LlamaForBlur, dataset, output_dir = "./finetuned-qa"):
     lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
+        r=64,
+        lora_alpha=128,
         target_modules=[
             "q_proj", "k_proj", "v_proj",
             "o_proj",
@@ -24,6 +22,8 @@ def finetune_model(llama_for_blur: LlamaForBlur, dataset, output_dir = "./finetu
         output_dir=output_dir,
         per_device_train_batch_size=2,
         gradient_accumulation_steps=16,
+        lr_scheduler_type="cosine",
+        warmup_ratio=0.03,
         learning_rate=2e-4,
         num_train_epochs=1,
         fp16=True,
@@ -36,6 +36,8 @@ def finetune_model(llama_for_blur: LlamaForBlur, dataset, output_dir = "./finetu
 
     
     tokenizer = llama_for_blur.get_tokenizer()
+    tokenizer.padding_side = "right"
+
     tokenized = get_tokenized_dataset(tokenizer, dataset)
 
     trainer = Trainer(
