@@ -46,7 +46,7 @@ def _iterative_unlearn_impl(unlearn_obj):
             criterion,
             ["linear", "conv2d"],
             getattr(args, "explained_variance_ratio", None),
-            use_projection_grad=args.use_projection_grad,
+            use_projection_grad=True,
         )
         print("Transform model duration: {:.4f}".format(time.time() - start))
         set_requires_grad(model, changed_layers_class=["customlinear", "customconv2d"])

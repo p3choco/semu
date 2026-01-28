@@ -18,6 +18,8 @@ from models.model_llama import get_model
 from torchvision import transforms
 from torch.utils.data import DataLoader, Subset
 from transformers import AutoTokenizer
+from evaluation import *
+from datasets import concatenate_datasets
 
 __all__ = [
     "setup_model_dataset",
@@ -134,16 +136,19 @@ def setup_model_dataset(args):
     # Load datasets
     if args.dataset.lower() == "rwku":
         # Assume you have preprocessed HF datasets for RWKU
-        retain_dataset = args.retain_dataset.map(tokenize, batched=True)
-        forget_dataset = args.forget_dataset.map(tokenize, batched=True)
+        retain_dataset = get_BLUR_dataset("rwku", "retain").dataset
+        forget_dataset = get_BLUR_dataset("rwku", "forget").dataset
     elif args.dataset.lower() == "whp":
-        retain_dataset = args.retain_dataset.map(tokenize, batched=True)
-        forget_dataset = args.forget_dataset.map(tokenize, batched=True)
+        retain_dataset = get_BLUR_dataset("whp", "retain").dataset
+        forget_dataset = get_BLUR_dataset("whp", "forget").dataset
     else:
         raise ValueError(f"Dataset {args.dataset} not supported!")
 
     # Combine for full training loader
-    combined_dataset = retain_dataset + forget_dataset
+    combined_dataset = concatenate_datasets([
+        retain_dataset["train"],
+        forget_dataset["train"]
+    ])
 
     return model, combined_dataset, retain_dataset, forget_dataset
 
