@@ -12,6 +12,8 @@ import utils
 import unlearn
 # from finetune import validate
 from models.model_llama import get_model 
+from loss import LLMQuestionOnlyUnlearningLoss
+from prompt_dataset import BlurPromptDataset
 
 import argparse
 
@@ -32,7 +34,7 @@ def main():
 
     # Device setup
     # device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
-    device = "cpu"
+    # device = "cpu"
     if args.seed:
         utils.setup_seed(args.seed)
 
@@ -43,12 +45,29 @@ def main():
     model = get_model(finetune=args.finetune, train=args.train)
     print(model.model)
     # === Split retain / forget datasets ===
+    # forget_dataset = BlurPromptDataset(forget_dataset['text'], )
+    def get_tokenized_dataset(tokenizer, dataset):
+        def tokenize(example):
+            return tokenizer(
+                example["text"],
+                truncation=True,
+                max_length=256,
+                padding="max_length",
+            )
+
+        tokenized = dataset.map(tokenize, batched=True, remove_columns=dataset.column_names)
+        tokenized.set_format(type="torch")  # converts input_ids & attention_mask to tensors
+        return tokenized
 
 
-    forget_loader = DataLoader(forget_dataset["train"], batch_size=args.batch_size, shuffle=True)
-    retain_loader = DataLoader(retain_dataset["train"], batch_size=args.batch_size, shuffle=True)
+    forget_tokenized = get_tokenized_dataset(model.get_tokenizer(), forget_dataset)
+    retain_tokenized = get_tokenized_dataset(model.get_tokenizer(), retain_dataset)
+    print(forget_tokenized)
+    forget_loader = DataLoader(forget_tokenized, batch_size=args.batch_size, shuffle=True)
+    retain_loader = DataLoader(retain_tokenized, batch_size=args.batch_size, shuffle=True)
     # val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
     # test_loader = DataLoader(test_dataset, batch_size=args.batch_size)
+
 
     print(f"Number of retain examples: {len(retain_dataset)}")
     print(f"Number of forget examples: {len(forget_dataset)}")
@@ -60,7 +79,10 @@ def main():
         # test=test_loader
     )
 
-    criterion = nn.CrossEntropyLoss()  # can also use LabelSmoothing if needed
+    # criterion = nn.CrossEntropyLoss()  # can also use LabelSmoothing if needed
+    criterion = LLMQuestionOnlyUnlearningLoss(model.model)
+
+
     evaluation_result = {}
 
     # === Load or resume checkpoint ===
@@ -78,8 +100,9 @@ def main():
     #         print("Loaded model checkpoint for LLM unlearning")
 
     # === Perform unlearning ===
-    unlearn_method = unlearn.get_unlearn_method(args.unlearn)
-    unlearn_method(data_loaders, model, criterion, args)
+    # unlearn_method = unlearn.get_unlearn_method(args.unlearn)
+    unlearn_method = unlearn.get_unlearn_method("own_SVD")
+    unlearn_method(data_loaders, model.model, criterion, args)
     unlearn.save_unlearn_checkpoint(model, None, args)
 
     # === Evaluate model on all splits ===

@@ -112,19 +112,19 @@ def _iterative_unlearn_impl(unlearn_obj):
                     epoch, optimizer.state_dict()["param_groups"][0]["lr"]
                 )
             )
-
+            # TODO: TO MODIFY
             unlearn_obj.train_iter(data_loaders, model, criterion, optimizer, epoch, args)
             scheduler.step()
 
-            if early_exit is not None:
-                val_forget = unlearn_obj.validation_iter(model, data_loaders["forget"], epoch, args)
-                val_retain = unlearn_obj.validation_iter(model, data_loaders["retain"], epoch, args)
+            # if early_exit is not None:
+            #     val_forget = unlearn_obj.validation_iter(model, data_loaders["forget"], epoch, args)
+            #     val_retain = unlearn_obj.validation_iter(model, data_loaders["retain"], epoch, args)
 
-                # Check for early stopping condition
-                early_exit((100 - val_forget + val_retain) / 2)
-                if early_exit.early_stop:
-                    print(f"Early stopping triggered at epoch {epoch + 1}")
-                    break
+            #     # Check for early stopping condition
+            #     early_exit((100 - val_forget + val_retain) / 2)
+            #     if early_exit.early_stop:
+            #         print(f"Early stopping triggered at epoch {epoch + 1}")
+            #         break
 
             print("one epoch duration:{:.4f}".format(time.time() - start_time))
 

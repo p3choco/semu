@@ -34,32 +34,37 @@ def transform_model(
     Returns:
         nn.Module: The transformed model.
     """
+    print("Transforming model")
     device = next(model.parameters()).device
 
     if changed_layers_class is None:
         changed_layers_class = ["linear", "conv2d"]
 
-    def compute_gradients(data, target):
+    def compute_gradients(batch):
         """
-        Compute gradients for the unlearning dataset
+        Compute gradients for LLM unlearning using blur (question-only) data
+        via negative KL divergence from a reference model.
         """
-        model.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
+
+        loss, metrics = criterion(model, batch)
+        # Backprop
         loss.backward()
+
         gradients_dict = {
             name[: name.rfind(".")]: param.grad.clone()
             for name, param in model.named_parameters()
-            if param.requires_grad
+            if param.requires_grad and param.grad is not None
         }
-        return gradients_dict
+
+        return gradients_dict, loss.item()
 
     set_requires_grad(model, changed_layers_class=changed_layers_class)
-
+    print("Compute gradients")
     sum_gradients = None
-    for images, targets in data_loader_unlearn:
-        images, targets = images.to(device), targets.to(device)
-        gradients = compute_gradients(images, targets)
+    for i, batch in enumerate(data_loader_unlearn):
+        batch = {k: v.to(device) for k, v in batch.items()}
+        print(f"Batch {i}")
+        gradients = compute_gradients(batch)
         if sum_gradients is None:
             sum_gradients = gradients
         else:
@@ -75,10 +80,10 @@ def transform_model(
 
     u_matrices = {}
     vh_matrices = {}
+    print("SVD computing")
     for key, G in sum_gradients.items():
         if G.dim() == 2:
             u, s, vh = torch.linalg.svd(G, full_matrices=False)
-
             if explained_variance_ratio is None:
                 u_, vh_ = u, vh
             else:
@@ -123,5 +128,7 @@ def transform_model(
             )
         u_matrices[key] = u_
         vh_matrices[key] = vh_
+
+    print("Replace layers")
 
     replace_layers_with_custom(model, u_matrices, vh_matrices)

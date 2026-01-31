@@ -136,18 +136,18 @@ def setup_model_dataset(args):
     # Load datasets
     if args.dataset.lower() == "rwku":
         # Assume you have preprocessed HF datasets for RWKU
-        retain_dataset = get_BLUR_dataset("rwku", "retain").dataset
-        forget_dataset = get_BLUR_dataset("rwku", "forget").dataset
+        retain_dataset = get_BLUR_dataset("rwku", "retain").dataset["train"]
+        forget_dataset = get_BLUR_dataset("rwku", "forget").dataset["train"]
     elif args.dataset.lower() == "whp":
-        retain_dataset = get_BLUR_dataset("whp", "retain").dataset
-        forget_dataset = get_BLUR_dataset("whp", "forget").dataset
+        retain_dataset = get_BLUR_dataset("whp", "retain").dataset["train"]
+        forget_dataset = get_BLUR_dataset("whp", "forget").dataset["train"]
     else:
         raise ValueError(f"Dataset {args.dataset} not supported!")
 
     # Combine for full training loader
     combined_dataset = concatenate_datasets([
-        retain_dataset["train"],
-        forget_dataset["train"]
+        retain_dataset,
+        forget_dataset
     ])
 
     return model, combined_dataset, retain_dataset, forget_dataset

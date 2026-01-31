@@ -45,7 +45,7 @@ class OwnSVD:
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
         start = time.time()
-        for i, (image, target) in enumerate(train_loader):
+        for i, prompt in enumerate(train_loader):
             if epoch < args.warmup:
                 utils.warmup_lr(epoch, i + 1, optimizer, one_epoch_step=len(train_loader), args=args)
 
@@ -53,7 +53,7 @@ class OwnSVD:
             target = target.cuda()
 
             output_clean = model(image)
-            loss = criterion(output_clean, target)
+            loss, metrics = criterion(model, prompt)
 
             assert (
                 torch.isfinite(loss).all().item()
@@ -87,34 +87,35 @@ class OwnSVD:
 
         return top1.avg
 
-    @staticmethod
-    def validation_iter(model, val_loader, epoch, args):
-        top1 = utils.AverageMeter()
+    # TODO MAYBE ADD 
+    # @staticmethod
+    # def validation_iter(model, val_loader, epoch, args):
+    #     top1 = utils.AverageMeter()
 
-        model.eval()
+    #     model.eval()
 
-        start = time.time()
-        with torch.no_grad():
-            for i, (image, target) in enumerate(val_loader):
-                image, target = image.cuda(), target.cuda()
-                output = model(image)
+    #     start = time.time()
+    #     with torch.no_grad():
+    #         for i, (image, target) in enumerate(val_loader):
+    #             image, target = image.cuda(), target.cuda()
+    #             output = model(image)
 
-                prec1 = utils.accuracy(output.data, target)[0]
-                top1.update(prec1.item(), image.size(0))
+    #             prec1 = utils.accuracy(output.data, target)[0]
+    #             top1.update(prec1.item(), image.size(0))
 
-                if (i + 1) % args.print_freq == 0:
-                    end = time.time()
-                    print(
-                        "Valid epoch: [{0}][{1}/{2}]\t"
-                        "Accuracy {top1.val:.3f} ({top1.avg:.3f})\t"
-                        "Time {3:.2f}".format(
-                            epoch, i, len(val_loader), end - start, top1=top1
-                        )
-                    )
-                    start = time.time()
-        print("valid_accuracy {top1.avg:.3f}".format(top1=top1))
+    #             if (i + 1) % args.print_freq == 0:
+    #                 end = time.time()
+    #                 print(
+    #                     "Valid epoch: [{0}][{1}/{2}]\t"
+    #                     "Accuracy {top1.val:.3f} ({top1.avg:.3f})\t"
+    #                     "Time {3:.2f}".format(
+    #                         epoch, i, len(val_loader), end - start, top1=top1
+    #                     )
+    #                 )
+    #                 start = time.time()
+    #     print("valid_accuracy {top1.avg:.3f}".format(top1=top1))
 
-        return top1.avg
+    #     return top1.avg
 
 
 @iterative_unlearn
