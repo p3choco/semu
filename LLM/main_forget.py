@@ -1,4 +1,5 @@
 import copy
+import torch
 from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime
@@ -14,6 +15,7 @@ import unlearn
 from models.model_llama import get_model 
 from loss import LLMQuestionOnlyUnlearningLoss
 from prompt_dataset import BlurPromptDataset
+from peft import LoraConfig, get_peft_model
 
 import argparse
 
@@ -31,27 +33,34 @@ def parse_args():
 
 def main():
     args = parse_args()
-
+    # torch.cuda.empty_cache()
+    print(torch.cuda.device_count())
+    
+    # device = torch.cuda(0)
+    # print(torch.cuda.get_device_name(0))
     # Device setup
-    # device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
+    # args.device = f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu"
     # device = "cpu"
     if args.seed:
         utils.setup_seed(args.seed)
 
     # === Load model & datasets ===
-    model, train_dataset_full, retain_dataset, forget_dataset = utils.setup_model_dataset(args)
+    
+    model, tokenizer, train_dataset_full, retain_dataset, forget_dataset = utils.setup_model_dataset(args)
 
     # Move model to device
-    model = get_model(finetune=args.finetune, train=args.train)
-    print(model.model)
+    # model = get_model(finetune=args.finetune, train=args.train)
+    # print(model.model)
     # === Split retain / forget datasets ===
     # forget_dataset = BlurPromptDataset(forget_dataset['text'], )
+    for name, param in model.named_parameters():
+        print(name)
     def get_tokenized_dataset(tokenizer, dataset):
         def tokenize(example):
             return tokenizer(
                 example["text"],
                 truncation=True,
-                max_length=256,
+                max_length=128,
                 padding="max_length",
             )
 
@@ -60,8 +69,8 @@ def main():
         return tokenized
 
 
-    forget_tokenized = get_tokenized_dataset(model.get_tokenizer(), forget_dataset)
-    retain_tokenized = get_tokenized_dataset(model.get_tokenizer(), retain_dataset)
+    forget_tokenized = get_tokenized_dataset(tokenizer, forget_dataset)
+    retain_tokenized = get_tokenized_dataset(tokenizer, retain_dataset)
     print(forget_tokenized)
     forget_loader = DataLoader(forget_tokenized, batch_size=args.batch_size, shuffle=True)
     retain_loader = DataLoader(retain_tokenized, batch_size=args.batch_size, shuffle=True)
@@ -80,9 +89,23 @@ def main():
     )
 
     # criterion = nn.CrossEntropyLoss()  # can also use LabelSmoothing if needed
-    criterion = LLMQuestionOnlyUnlearningLoss(model.model)
+    criterion = LLMQuestionOnlyUnlearningLoss(model)
 
 
+    config = LoraConfig(
+        r=8,                       # rank
+        lora_alpha=16,
+        target_modules=["q_proj", "v_proj"],
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    peft_model = get_peft_model(model, config)
+    print(peft_model)
+    print("peft")
+    for name, module in peft_model.named_modules():
+        print(name, type(module))
     evaluation_result = {}
 
     # === Load or resume checkpoint ===
@@ -102,8 +125,8 @@ def main():
     # === Perform unlearning ===
     # unlearn_method = unlearn.get_unlearn_method(args.unlearn)
     unlearn_method = unlearn.get_unlearn_method("own_SVD")
-    unlearn_method(data_loaders, model.model, criterion, args)
-    unlearn.save_unlearn_checkpoint(model, None, args)
+    unlearn_method(data_loaders, peft_model, criterion, args)
+    # unlearn.save_unlearn_checkpoint(model, None, args)
 
     # === Evaluate model on all splits ===
     # for name, loader in data_loaders.items():

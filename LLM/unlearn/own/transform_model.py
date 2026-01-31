@@ -50,11 +50,12 @@ def transform_model(
         # Backprop
         loss.backward()
 
-        gradients_dict = {
-            name[: name.rfind(".")]: param.grad.clone()
-            for name, param in model.named_parameters()
-            if param.requires_grad and param.grad is not None
-        }
+        gradients_dict = {}
+
+        for name, param in model.named_parameters():
+            if param.requires_grad and param.grad is not None:
+                # move gradient to CPU and detach graph
+                gradients_dict[name] = param.grad.detach().cpu()
 
         return gradients_dict, loss.item()
 
@@ -62,14 +63,19 @@ def transform_model(
     print("Compute gradients")
     sum_gradients = None
     for i, batch in enumerate(data_loader_unlearn):
-        batch = {k: v.to(device) for k, v in batch.items()}
         print(f"Batch {i}")
-        gradients = compute_gradients(batch)
+
+        grads, loss_val = compute_gradients(batch)
+
         if sum_gradients is None:
-            sum_gradients = gradients
+            sum_gradients = grads
         else:
-            for key, val in gradients.items():
-                sum_gradients[key] += val
+            for k in sum_gradients:
+                sum_gradients[k] += grads[k]
+
+        # explicit cleanup
+        del grads
+        torch.cuda.empty_cache()
 
     if use_projection_grad:
         # Projecting the gradient onto the space perpendicular to the weights

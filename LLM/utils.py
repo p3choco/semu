@@ -117,21 +117,8 @@ def setup_model_dataset(args):
     No validation/test splits.
     """
 
-    llama_for_blur = get_model(finetune=args.finetune, train=args.train)
+    llama_for_blur = get_model(finetune=args.finetune, load_in_4bit=True, train=True)
     model = llama_for_blur.model
-
-    # Load tokenizer
-    tokenizer = llama_for_blur.get_tokenizer()
-    tokenizer.padding_side = "left"
-
-    def tokenize(batch):
-        return tokenizer(
-            batch["question"],
-            batch.get("context", None),
-            truncation=True,
-            max_length=args.max_length,
-            padding="max_length",
-        )
 
     # Load datasets
     if args.dataset.lower() == "rwku":
@@ -150,7 +137,7 @@ def setup_model_dataset(args):
         forget_dataset
     ])
 
-    return model, combined_dataset, retain_dataset, forget_dataset
+    return model, llama_for_blur.get_tokenizer(), combined_dataset, retain_dataset, forget_dataset
 
 
 def setup_seed(seed):
