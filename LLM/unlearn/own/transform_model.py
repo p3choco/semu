@@ -5,67 +5,98 @@ import torch.nn as nn
 from torch import linalg as LA
 from torch.utils.data import DataLoader
 
-from .utils import set_requires_grad, replace_layers_with_custom
+from .utils import apply_svd_to_lora_params
 
 
 def transform_text_layer(text):
     return re.sub(r"(^|\.)([0-9]+)(?=\.|$)", lambda match: f"[{match.group(2)}]", text)
 
+def get_lora_module_from_param_name(model: nn.Module, param_name: str):
+    """
+    Given a LoRA parameter name, return the parent module
+    that contains lora_A and lora_B.
+    """
+    # usuwamy końcówkę '.lora_A.weight' albo '.lora_B.weight'
+    if ".lora_A." in param_name:
+        module_path = param_name.split(".lora_A.")[0]
+    elif ".lora_B." in param_name:
+        module_path = param_name.split(".lora_B.")[0]
+    else:
+        raise ValueError(f"Not a LoRA parameter: {param_name}")
+
+    module = model
+    for attr in module_path.split("."):
+        module = getattr(module, attr)
+
+    return module
+
+def get_lora_delta_weight(lora_module: nn.Module):
+    """
+    Compute ΔW = B @ A for a LoRA module.
+    """
+    adapter_name = "default"
+    A_layer = lora_module.lora_A[adapter_name]   
+    B_layer = lora_module.lora_B[adapter_name]  
+
+    A = A_layer.weight
+    B = B_layer.weight
+
+    delta_W =  B @ A
+    delta_W = delta_W.to("cpu")     
+
+    return delta_W           
 
 def transform_model(
     model: nn.Module,
     data_loader_unlearn: DataLoader,
     criterion: nn.Module,
-    changed_layers_class: list[str] = None,
     explained_variance_ratio: float = None,
     use_projection_grad: bool = False,
 ) -> None:
-    """
-    Transform the model by replacing the last layer with a new linear layer.
-
-    Args:
-        model (nn.Module): The input model.
-        data_loader_unlearn (DataLoader): DataLoader for the unlearning dataset.
-        criterion (nn.Module): Loss function.
-        changed_layers_class (list[str], optional): List of layer class names for which parameters should remain trainable.
-        explained_variance_ratio (float, optional): Explained variance ratio for the new linear layer.
-        use_projection_grad: Make projection gradients onto the space perpendicular to the weights
-
-    Returns:
-        nn.Module: The transformed model.
-    """
+    
     print("Transforming model")
-    device = next(model.parameters()).device
-
-    if changed_layers_class is None:
-        changed_layers_class = ["linear", "conv2d"]
+    # model.train()
+    # model.enable_input_require_grads()
 
     def compute_gradients(batch):
-        """
-        Compute gradients for LLM unlearning using blur (question-only) data
-        via negative KL divergence from a reference model.
-        """
+
+        # print("\nAny trainable params (in compute_gradients):",
+        #   any(p.requires_grad for p in model.parameters()))
+        # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
 
         loss, metrics = criterion(model, batch)
-        # Backprop
         loss.backward()
 
         gradients_dict = {}
 
         for name, param in model.named_parameters():
             if param.requires_grad and param.grad is not None:
-                # move gradient to CPU and detach graph
                 gradients_dict[name] = param.grad.detach().cpu()
 
         return gradients_dict, loss.item()
+    
+    # print("\nAny trainable params:",
+    #     any(p.requires_grad for p in model.parameters()))
+    # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
 
-    set_requires_grad(model, changed_layers_class=changed_layers_class)
+    # set_requires_grad_last_layers(model, changed_layer_prefixes)
+    for p in model.parameters():
+        p.requires_grad = False
+
+    for name, p in model.named_parameters():
+        if "lora_" in name:
+            p.requires_grad = True
+
+    # print("\nAny trainable params:",
+    #     any(p.requires_grad for p in model.parameters()))
+    # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
+    
     print("Compute gradients")
+
     sum_gradients = None
     for i, batch in enumerate(data_loader_unlearn):
         print(f"Batch {i}")
-
-        grads, loss_val = compute_gradients(batch)
+        grads, _ = compute_gradients(batch)
 
         if sum_gradients is None:
             sum_gradients = grads
@@ -73,16 +104,22 @@ def transform_model(
             for k in sum_gradients:
                 sum_gradients[k] += grads[k]
 
-        # explicit cleanup
         del grads
         torch.cuda.empty_cache()
 
+    # TODO: nwm czy działa dobrze, ale się nie wywala teraz
+    print(f"### USE_PROJECTION_GRAD: {use_projection_grad} ###")
     if use_projection_grad:
-        # Projecting the gradient onto the space perpendicular to the weights
-        for layer_name, grad in sum_gradients.items():
-            _weight = eval(f"model.{transform_text_layer(layer_name)}.weight")
-            proj_grad = grad - (torch.sum(grad * _weight) / LA.norm(_weight)) * _weight
-            sum_gradients[layer_name] = proj_grad
+        for param_name, grad in sum_gradients.items():
+            param = dict(model.named_parameters())[param_name].detach().cpu()
+            grad_flat = grad.view(-1)
+            param_flat = param.view(-1)
+            proj_grad_flat = grad_flat - (
+                torch.dot(grad_flat, param_flat)
+                / (torch.norm(param_flat) ** 2 + 1e-12)
+            ) * param_flat
+            sum_gradients[param_name] = proj_grad_flat.view_as(grad)
+    print("### Nie wywalam się na USE_PROJECTION_GRAD ###")
 
     u_matrices = {}
     vh_matrices = {}
@@ -137,4 +174,5 @@ def transform_model(
 
     print("Replace layers")
 
-    replace_layers_with_custom(model, u_matrices, vh_matrices)
+    # replace_layers_with_custom(model, u_matrices, vh_matrices)
+    apply_svd_to_lora_params(model, u_matrices, vh_matrices)

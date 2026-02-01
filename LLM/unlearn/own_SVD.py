@@ -12,111 +12,113 @@ from .own.utils import train_phase
 class OwnSVD:
     @staticmethod
     def train_iter(data_loaders, model, criterion, optimizer, epoch, args):
+        
+        print("Hello form train_iter!")
         forget_loader = data_loaders["forget"]
-        retain_loader = data_loaders["retain"]
-
         losses = utils.AverageMeter()
         top1 = utils.AverageMeter()
 
-        # switch to train mode
-        # model.train()
-        train_phase(model, changed_layers_class=["customlinear", "customconv2d"])
+        # switch to train mode: model.train()
 
-        # --------------------------------------------------
-        # random set targets for forget loader
-        forget_dataset = deepcopy(forget_loader.dataset)
+        mode = "EVAL"
+        if model.training:
+            mode = "TRAIN"
+        print(f"Model mode: {mode}")
 
-        if hasattr(forget_dataset, 'targets'):
-            train_dataset = forget_dataset
-        else:
-            train_dataset = forget_dataset.dataset
+        # forget_dataset = deepcopy(forget_loader.dataset)
+        train_dataset = deepcopy(forget_loader.dataset)
 
-        targets_unlearn = np.random.randint(0, args.num_classes, len(train_dataset.targets))
-        targets_unlearn = np.where(
-            targets_unlearn == train_dataset.targets,
-            np.remainder(targets_unlearn + 1, args.num_classes),
-            targets_unlearn
-        )
-        train_dataset.targets = targets_unlearn
-        # --------------------------------------------------
+        # train_phase(model, changed_layers_class=["customlinear", "customconv2d"])
 
-        if args.use_retaining_data:
-            train_dataset = torch.utils.data.ConcatDataset([train_dataset, retain_loader.dataset])
+        # if hasattr(forget_dataset, 'targets'):
+        #     train_dataset = forget_dataset
+        # else:
+        #     train_dataset = forget_dataset.dataset
+
+        # targets_unlearn = np.random.randint(0, args.num_classes, len(train_dataset.targets))
+        # targets_unlearn = np.where(
+        #     targets_unlearn == train_dataset.targets,
+        #     np.remainder(targets_unlearn + 1, args.num_classes),
+        #     targets_unlearn
+        # )
+        # train_dataset.targets = targets_unlearn
+
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-        start = time.time()
-        for i, prompt in enumerate(train_loader):
-            if epoch < args.warmup:
-                utils.warmup_lr(epoch, i + 1, optimizer, one_epoch_step=len(train_loader), args=args)
+        # model.train()
+        # model.enable_input_require_grads()
 
-            image = image.cuda()
-            target = target.cuda()
+        sum_gradients = {}
 
-            output_clean = model(image)
-            loss, metrics = criterion(model, prompt)
+        for i, batch in enumerate(train_loader):
+            loss, _ = criterion(model, batch)
 
-            assert (
-                torch.isfinite(loss).all().item()
-            ), f"Loss is NaN or Infinite, get: {loss}"
+            assert torch.isfinite(loss).all().item(), \
+                f"Loss is NaN or Infinite, got: {loss}"
 
-            optimizer.zero_grad()
+            model.zero_grad(set_to_none=True)
             loss.backward()
-            optimizer.step()
 
-            output = output_clean.float()
-            loss = loss.float()
-            # measure accuracy and record loss
-            prec1 = utils.accuracy(output.data, target)[0]
+            for name, param in model.named_parameters():
+                if param.requires_grad and param.grad is not None:
+                    if name not in sum_gradients:
+                        sum_gradients[name] = param.grad.detach().cpu().clone()
+                    else:
+                        sum_gradients[name] += param.grad.detach().cpu()
 
-            losses.update(loss.item(), image.size(0))
-            top1.update(prec1.item(), image.size(0))
+            del loss
+            torch.cuda.empty_cache()
 
-            if (i + 1) % args.print_freq == 0:
-                end = time.time()
-                print(
-                    "Epoch: [{0}][{1}/{2}]\t"
-                    "Loss {loss.val:.4f} ({loss.avg:.4f})\t"
-                    "Accuracy {top1.val:.3f} ({top1.avg:.3f})\t"
-                    "Time {3:.2f}".format(
-                        epoch, i, len(train_loader), end - start, loss=losses, top1=top1
-                    )
-                )
-                start = time.time()
 
-        print("train_accuracy {top1.avg:.3f}".format(top1=top1))
+        # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-        return top1.avg
+        # start = time.time()
+        # for i, prompt in enumerate(train_loader):
+        #     if epoch < args.warmup:
+        #         utils.warmup_lr(epoch, i + 1, optimizer, one_epoch_step=len(train_loader), args=args)
 
-    # TODO MAYBE ADD 
-    # @staticmethod
-    # def validation_iter(model, val_loader, epoch, args):
-    #     top1 = utils.AverageMeter()
+        #     # image = image.cuda()
+        #     # target = target.cuda()
 
-    #     model.eval()
+        #     output_clean = model(prompt)
+        #     loss, _ = criterion(model, prompt)
 
-    #     start = time.time()
-    #     with torch.no_grad():
-    #         for i, (image, target) in enumerate(val_loader):
-    #             image, target = image.cuda(), target.cuda()
-    #             output = model(image)
+        #     assert (
+        #         torch.isfinite(loss).all().item()
+        #     ), f"Loss is NaN or Infinite, get: {loss}"
 
-    #             prec1 = utils.accuracy(output.data, target)[0]
-    #             top1.update(prec1.item(), image.size(0))
+        #     print("Czy tu się wywalam? 1")
+        #     optimizer.zero_grad()
+        #     loss.backward()
+        #     optimizer.step()
+        #     print("Jednak NIE...")
 
-    #             if (i + 1) % args.print_freq == 0:
-    #                 end = time.time()
-    #                 print(
-    #                     "Valid epoch: [{0}][{1}/{2}]\t"
-    #                     "Accuracy {top1.val:.3f} ({top1.avg:.3f})\t"
-    #                     "Time {3:.2f}".format(
-    #                         epoch, i, len(val_loader), end - start, top1=top1
-    #                     )
-    #                 )
-    #                 start = time.time()
-    #     print("valid_accuracy {top1.avg:.3f}".format(top1=top1))
+        #     print("Czy tu się wywalam? 2")
+        #     output = output_clean.float()
+        #     loss = loss.float()
+        #     prec1 = utils.accuracy(output.data, target)[0]
+        #     print("Jednak NIE...")
 
-    #     return top1.avg
+        #     print("Czy tu się wywalam 3?")
+        #     losses.update(loss.item(), image.size(0))
+        #     top1.update(prec1.item(), image.size(0))
+        #     print("Jednak NIE...")
 
+        #     if (i + 1) % args.print_freq == 0:
+        #         end = time.time()
+        #         print(
+        #             "Epoch: [{0}][{1}/{2}]\t"
+        #             "Loss {loss.val:.4f} ({loss.avg:.4f})\t"
+        #             "Accuracy {top1.val:.3f} ({top1.avg:.3f})\t"
+        #             "Time {3:.2f}".format(
+        #                 epoch, i, len(train_loader), end - start, loss=losses, top1=top1
+        #             )
+        #         )
+        #         start = time.time()
+
+        # print("train_accuracy {top1.avg:.3f}".format(top1=top1))
+
+        # return top1.avg
 
 @iterative_unlearn
 def own_svd():

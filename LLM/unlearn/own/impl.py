@@ -2,7 +2,7 @@ import time
 
 import numpy as np
 import torch
-from .transform_model import transform_model, set_requires_grad, transform_text_layer
+from .transform_model import transform_model, transform_text_layer
 
 
 class EarlyExit:
@@ -37,19 +37,23 @@ class EarlyExit:
 
 def _iterative_unlearn_impl(unlearn_obj):
     def _wrapped(data_loaders, model, criterion, args):
+
+        print("Jestem we _wrapped!")
         decreasing_lr = list(map(int, args.decreasing_lr.split(",")))
 
         start = time.time()
+
+        print("Czy wywalam się na transform model?")
         transform_model(
             model,
             data_loaders["forget"],
             criterion,
-            ["linear", "conv2d"],
             getattr(args, "explained_variance_ratio", None),
             use_projection_grad=True,
         )
+        print("Nie, jeszcze nie tu...")
+
         print("Transform model duration: {:.4f}".format(time.time() - start))
-        set_requires_grad(model, changed_layers_class=["customlinear", "customconv2d"])
 
         # Display layer for which we calculate gradients
         print("\nLayers for which calculate gradients:", end="\n" + "=" * 50 + "\n")
@@ -72,37 +76,19 @@ def _iterative_unlearn_impl(unlearn_obj):
             weight_decay=args.weight_decay,
         )
 
-        if args.imagenet_arch and args.unlearn == "retrain":
-            lambda0 = (
-                lambda cur_iter: (cur_iter + 1) / args.warmup
-                if cur_iter < args.warmup
-                else (
-                    0.5
-                    * (
-                        1.0
-                        + np.cos(
-                            np.pi
-                            * (
-                                (cur_iter - args.warmup)
-                                / (args.unlearn_epochs - args.warmup)
-                            )
-                        )
-                    )
-                )
-            )
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda0)
-        else:
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                optimizer, milestones=decreasing_lr, gamma=0.1
-            )  # 0.1 is fixed
-        if args.rewind_epoch != 0:
-            # learning rate rewinding
-            for _ in range(args.rewind_epoch):
-                scheduler.step()
 
-        early_exit = None
-        if args.early_exit:
-            early_exit = EarlyExit(patience=args.early_exit_patience, min_delta=args.early_exit_min_delta)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=decreasing_lr, gamma=0.1
+        )  # 0.1 is fixed
+
+        # if args.rewind_epoch != 0:
+        #     # learning rate rewinding
+        #     for _ in range(args.rewind_epoch):
+        #         scheduler.step()
+
+        # early_exit = None
+        # if args.early_exit:
+        #     early_exit = EarlyExit(patience=args.early_exit_patience, min_delta=args.early_exit_min_delta)
 
         for epoch in range(0, args.unlearn_epochs):
             start_time = time.time()

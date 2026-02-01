@@ -117,7 +117,7 @@ def setup_model_dataset(args):
     No validation/test splits.
     """
 
-    llama_for_blur = get_model(finetune=args.finetune, load_in_4bit=True, train=True)
+    llama_for_blur = get_model()
     model = llama_for_blur.model
 
     # Load datasets
