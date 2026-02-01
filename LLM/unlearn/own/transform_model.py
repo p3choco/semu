@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch import linalg as LA
 from torch.utils.data import DataLoader
 
-from .utils import apply_svd_to_lora_params
+from .utils import replace_layers_with_custom
 
 
 def transform_text_layer(text):
@@ -71,8 +71,9 @@ def transform_model(
 
         for name, param in model.named_parameters():
             if param.requires_grad and param.grad is not None:
-                gradients_dict[name] = param.grad.detach().cpu()
-
+                # gradients_dict[name[: name.rfind(".")]] = param.grad.detach().cpu()
+                gradients_dict[name[: name.rfind(".")]] = param.grad.clone()
+        # print(gradients_dict.keys())
         return gradients_dict, loss.item()
     
     # print("\nAny trainable params:",
@@ -95,14 +96,14 @@ def transform_model(
 
     sum_gradients = None
     for i, batch in enumerate(data_loader_unlearn):
-        print(f"Batch {i}")
+        # print(f"Batch {i}")
         grads, _ = compute_gradients(batch)
 
         if sum_gradients is None:
             sum_gradients = grads
         else:
-            for k in sum_gradients:
-                sum_gradients[k] += grads[k]
+            for key, val in grads.items():
+                sum_gradients[key] += val
 
         del grads
         torch.cuda.empty_cache()
@@ -110,8 +111,14 @@ def transform_model(
     # TODO: nwm czy działa dobrze, ale się nie wywala teraz
     print(f"### USE_PROJECTION_GRAD: {use_projection_grad} ###")
     if use_projection_grad:
+        # for layer_name, grad in sum_gradients.items():
+        #     _weight = eval(f"model.{transform_text_layer(layer_name)}.weight")
+        #     proj_grad = grad - (torch.sum(grad * _weight) / LA.norm(_weight)) * _weight
+        #     sum_gradients[layer_name] = proj_grad
         for param_name, grad in sum_gradients.items():
-            param = dict(model.named_parameters())[param_name].detach().cpu()
+            param = eval(f"model.{transform_text_layer(param_name)}.weight")
+
+            # param = dict(model.named_parameters())[param_name].detach().cpu()
             grad_flat = grad.view(-1)
             param_flat = param.view(-1)
             proj_grad_flat = grad_flat - (
@@ -174,5 +181,5 @@ def transform_model(
 
     print("Replace layers")
 
-    # replace_layers_with_custom(model, u_matrices, vh_matrices)
-    apply_svd_to_lora_params(model, u_matrices, vh_matrices)
+    replace_layers_with_custom(model, u_matrices, vh_matrices)
+    # apply_svd_to_lora_params(model, u_matrices, vh_matrices)

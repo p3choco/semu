@@ -2,40 +2,51 @@ import torch
 from torch import nn, Tensor
 
 
-class CustomLinear(nn.Linear):
+class CustomLinear(nn.Module):
     def __init__(self, m: nn.Linear, u: Tensor, vh: Tensor):
-        super().__init__(
-            in_features=m.in_features,
-            out_features=m.out_features,
-            bias=m.bias is not None,
-            device=m.weight.device,
-            dtype=m.weight.dtype,
-        )
-        factory_kwargs = {"device": m.weight.device, "dtype": m.weight.dtype}
+        super().__init__()
 
-        self.weight = nn.Parameter(
-            torch.zeros((u.shape[1], vh.shape[0]), **factory_kwargs)
+        device = m.weight.device
+        dtype = m.weight.dtype
+
+        # Save dimensions
+        self.in_features = m.in_features
+        self.out_features = m.out_features
+
+        # Base (frozen) weight — DETACHED COPY
+        self.register_buffer(
+            "a",
+            m.weight.detach().clone()
         )
 
+        # Bias (frozen)
         if m.bias is not None:
-            self.bias.data = m.bias.data.clone()
+            self.register_buffer(
+                "bias",
+                m.bias.detach().clone()
+            )
+        else:
+            self.bias = None
 
-        self.register_buffer("a", m.weight)
-        self.register_buffer("u", u)
-        self.register_buffer("vh", vh)
+        # SVD components — DETACHED
+        self.register_buffer("u", u.detach())
+        self.register_buffer("vh", vh.detach())
+
+        # Trainable low-rank core
+        self.weight = nn.Parameter(
+            torch.zeros(
+                (u.shape[1], vh.shape[0]),
+                device=device,
+                dtype=dtype,
+            )
+        )
 
     def forward(self, x: Tensor) -> Tensor:
-        """
-        Forward pass for the CustomLinear layer using reconstructed weights from SVD components.
+        # Reconstruct weight
+        delta = torch.einsum("ij,jk,kl->il", self.u, self.weight, self.vh)
+        weight = self.a + delta
+        return nn.functional.linear(x, weight, self.bias)
 
-        Args:
-            x (Tensor): Input tensor.
-
-        Returns:
-            Tensor: Output tensor after applying the linear transformation.
-        """
-        _weight = self.a + torch.einsum("ij,jk,kl->il", self.u, self.weight, self.vh)
-        return nn.functional.linear(x, _weight, self.bias)
 
 
 class CustomConv2d(nn.Conv2d):
@@ -139,14 +150,14 @@ def replace_layers_with_custom(
 
     for name, module in model.named_children():
         full_name = f"{parent_name}.{name}" if parent_name else name
-        if type(module) is nn.Conv2d:
+        if type(module) is nn.Conv2d and full_name in u:
             # Replace Conv2d with CustomConv2d
             setattr(
                 model,
                 name,
                 CustomConv2d(module, u[full_name], vh[full_name]),
             )
-        elif type(module) is nn.Linear:
+        elif type(module) is nn.Linear and full_name in u:
             # Replace Linear with CustomLinear
             setattr(
                 model,

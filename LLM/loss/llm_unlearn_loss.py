@@ -47,13 +47,15 @@ class LLMQuestionOnlyUnlearningLoss(nn.Module):
         #     )
 
         # Current model distribution
-        batch = {k: v.to(model.device) for k, v in batch.items()}
-        batch['labels'] = batch['input_ids']
-        with torch.cuda.amp.autocast(dtype=torch.float16):
+        device = model.get_input_embeddings().weight.device
 
-            outputs = model(**batch, return_dict=True)
-            # logits = outputs.logits[:, -1, :]
-            loss = outputs.loss
+        batch = {k: v.to(device) for k, v in batch.items()}
+        batch['labels'] = batch['input_ids']
+        # with torch.cuda.amp.autocast(dtype=torch.float16):
+
+        outputs = model(**batch, return_dict=True)
+        # logits = outputs.logits[:, -1, :]
+        loss = outputs.loss
         # del outputs
 
         # log_probs = torch.log_softmax(

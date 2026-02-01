@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--unlearn_epochs", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=0)
+    parser.add_argument("--print_freq", type=int, default=10)
     return parser.parse_args()
 
 def get_tokenized_dataset(tokenizer, dataset):

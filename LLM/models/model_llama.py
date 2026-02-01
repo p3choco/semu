@@ -26,8 +26,8 @@ class LlamaForBlur(nn.Module):
                 config=self.config,
                 quantization_config=bnb_config,
                 torch_dtype=torch.float16,
-                device_map="auto",
-            )
+                device_map=None,
+            ).to("cuda:0")
             print(f"--> Model {self.model_name} loaded successfully.")       
         except Exception as e:
             print(f"Error loading model: {e}")
