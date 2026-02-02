@@ -11,8 +11,16 @@ from typing import Dict, List
 
 import torch
 from tqdm import tqdm
+from transformers import StoppingCriteriaList
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from Inference.inference_utils import (
+    StopOnSubstrings,
+    STOP_SEQUENCES,
+    extract_answer_from_generation,
+    trim_answer,
+)
 
 
 def load_data(data_path: str) -> List[Dict]:
@@ -102,10 +110,19 @@ def run_inference(
     max_new_tokens: int = 64,
     temperature: float = 1.0,
     batch_size: int = 4,
+    use_stopping_criteria: bool = True,
+    trim_sentences: int = 2,
 ) -> List[str]:
     """Run inference and return generated responses."""
     all_responses = []
     device = model.device if hasattr(model, 'device') else next(model.parameters()).device
+    
+    # Setup stopping criteria
+    stopping_criteria = None
+    if use_stopping_criteria:
+        stopping_criteria = StoppingCriteriaList([
+            StopOnSubstrings(STOP_SEQUENCES, tokenizer=tokenizer)
+        ])
     
     with torch.no_grad():
         for i in tqdm(range(0, len(prompts), batch_size), desc="Generating"):
@@ -127,13 +144,14 @@ def run_inference(
                 do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
+                stopping_criteria=stopping_criteria,
             )
             
             for j, output in enumerate(outputs):
-                input_length = inputs["input_ids"][j].shape[0]
-                generated_tokens = output[input_length:]
-                response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
-                all_responses.append(response.strip())
+                decoded = tokenizer.decode(output, skip_special_tokens=True)
+                # Extract and clean answer using shared utility
+                response = extract_answer_from_generation(decoded, trim_sentences=trim_sentences)
+                all_responses.append(response)
     
     return all_responses
 
@@ -160,6 +178,10 @@ def main():
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--use_wrapper", action="store_true",
                         help="Use LlamaForBlur wrapper")
+    parser.add_argument("--use_stopping_criteria", action="store_true",
+                        help="Use stopping criteria to prevent over-generation")
+    parser.add_argument("--trim_sentences", type=int, default=2,
+                        help="Number of sentences to keep in answers")
     parser.add_argument("--compute_metrics", action="store_true",
                         help="Also compute metrics after generation")
     parser.add_argument("--judge_model_path", type=str, default=None,
@@ -194,7 +216,8 @@ def main():
     print("\nGenerating responses...")
     responses = run_inference(
         model, tokenizer, prompts,
-        args.max_new_tokens, args.temperature, args.batch_size
+        args.max_new_tokens, args.temperature, args.batch_size,
+        args.use_stopping_criteria, args.trim_sentences
     )
     
     # Build results

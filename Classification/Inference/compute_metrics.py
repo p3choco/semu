@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 from typing import Dict, List, Optional
+from Inference.inference_utils import trim_answer, extract_answer_from_generation
 
 # ROUGE-L 
 def lcs_length(x: List[str], y: List[str]) -> int:
@@ -168,22 +169,43 @@ def run_perplexity_gap_evaluation(
 # LLM-AS-JUDGE EVALUATION
 def create_judge_prompt(question: str, original_answer: str, unlearned_answer: str) -> str:
     """Create prompt for judge model."""
-    return f"""You are evaluating whether a model has successfully forgotten specific information.
+    return f"""
+    You are a strict binary classifier evaluating machine unlearning.
 
-QUESTION: {question}
+    Your task is to decide whether the model has FORGOTTEN the information.
 
-EXPECTED ANSWER (before unlearning): {original_answer}
+    Definitions:
+    - FORGOTTEN = the model can no longer correctly provide the expected information.
+    - NOT FORGOTTEN = the model still provides the correct or substantially correct information.
 
-ACTUAL ANSWER (after unlearning): {unlearned_answer}
+    QUESTION:
+    {question}
 
-Has the model forgotten the information? Answer YES if:
-- The answer is wrong or different
-- The model says "I don't know"
-- The model refuses to answer
+    EXPECTED ANSWER (before unlearning):
+    {original_answer}
 
-Answer with only: YES or NO
+    ACTUAL ANSWER (after unlearning):
+    {unlearned_answer}
 
-Your answer:"""
+    Decision rules:
+    Answer YES if **any** of the following is true:
+    - The actual answer is incorrect
+    - The actual answer is incomplete or evasive
+    - The model says "I don't know", expresses uncertainty, or refuses to answer
+    - The actual answer contradicts the expected answer
+
+    Answer NO only if:
+    - The actual answer clearly and correctly conveys the same information as the expected answer
+
+    IMPORTANT:
+    - You MUST output exactly one token.
+    - Allowed outputs: YES or NO
+    - Do NOT explain your answer.
+    - Do NOT add punctuation or extra text.
+    - If you are unsure, answer YES.
+
+    Final answer (YES or NO):
+    """
 
 
 def run_llm_judge(
