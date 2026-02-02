@@ -1,6 +1,13 @@
 """
 Shared utilities for inference and evaluation.
 Provides consistent dataset formatting, answer trimming, and stopping criteria.
+
+Key Functions:
+- trim_answer: Trim answers to N sentences
+- format_rwku: Format Q&A prompts consistently
+- StopOnSubstrings: Stopping criteria for generation
+- get_blur_dataset: Load BLUR dataset in inference-compatible format
+- convert_blur_to_inference_format: Convert BLUR items to inference format
 """
 
 import spacy
@@ -96,22 +103,102 @@ STOP_SEQUENCES = [
 ]
 
 
-def get_blur_dataset(dataset_name: str = "rwku", split: str = "retain"):
+def get_blur_dataset(task: str = "rwku", variant: str = "retain"):
     """
     Load and format BLUR dataset with consistent prompting.
+    Compatible with inference pipeline format.
     
     Args:
-        dataset_name: Name of the BLUR dataset (default: "rwku")
-        split: Dataset split to load (default: "retain")
+        task: BLUR task name - 'rwku' | 'whp' | 'tofu' | 'wmdp' (default: "rwku")
+        variant: Dataset variant - 'forget' | 'retain' | 'paired_forget_retain' | 'D_hi' | 'D_mid' | 'D_lo' (default: "retain")
     
     Returns:
-        Formatted dataset with prompts
+        List of dictionaries with 'prompt', 'answer', and 'split' fields
+        Ready for use with inference_loop.py
     """
-    from evaluation import BLUR
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    blur = BLUR.get_BLUR_dataset(dataset_name, split)
-    dataset = blur.dataset.map(format_rwku)
-    return dataset
+    from evaluation.BLUR import get_BLUR_dataset
+    
+    # Load BLUR dataset
+    blur_dataset = get_BLUR_dataset(task, variant)
+    
+    # Convert to inference-compatible format
+    formatted_data = []
+    for i in range(len(blur_dataset)):
+        item = blur_dataset[i]
+        
+        # Format the prompt with Q&A structure
+        text = item["prompt"]
+        if not text.startswith("Question:"):
+            formatted_prompt = f"Question: {text}\nAnswer:"
+        else:
+            formatted_prompt = text
+        
+        # Map variant to split (forget/retain)
+        split = "forget" if "forget" in variant.lower() else "retain"
+        
+        formatted_data.append({
+            "prompt": formatted_prompt,
+            "answer": "",  # Ground truth - will be filled during evaluation or can be extracted from dataset if available
+            "split": split,
+            "task": item.get("task", task),
+            "variant": item.get("variant", variant),
+        })
+    
+    return formatted_data
+
+
+def convert_blur_to_inference_format(blur_dataset, ground_truths=None):
+    """
+    Convert BLUR dataset items to inference pipeline format.
+    
+    Args:
+        blur_dataset: BLUR dataset instance or list of items from BLUR
+        ground_truths: Optional list of ground truth answers (same length as dataset)
+    
+    Returns:
+        List of dictionaries compatible with inference_loop.py format
+    """
+    formatted_data = []
+    
+    # Handle both Dataset object and list
+    if hasattr(blur_dataset, '__len__') and hasattr(blur_dataset, '__getitem__'):
+        items = [blur_dataset[i] for i in range(len(blur_dataset))]
+    else:
+        items = blur_dataset
+    
+    for idx, item in enumerate(items):
+        # Extract prompt
+        prompt = item.get("prompt", item.get("text", ""))
+        
+        # Format with Q&A structure if not already formatted
+        if not prompt.startswith("Question:"):
+            formatted_prompt = f"Question: {prompt}\nAnswer:"
+        else:
+            formatted_prompt = prompt
+        
+        # Determine split from variant
+        variant = item.get("variant", "retain")
+        split = "forget" if "forget" in str(variant).lower() else "retain"
+        
+        # Get ground truth if available
+        answer = ""
+        if ground_truths and idx < len(ground_truths):
+            answer = ground_truths[idx]
+        elif "answer" in item:
+            answer = item["answer"]
+        
+        formatted_data.append({
+            "prompt": formatted_prompt,
+            "answer": answer,
+            "split": split,
+            "task": item.get("task", "unknown"),
+        })
+    
+    return formatted_data
 
 
 def extract_answer_from_generation(decoded_text: str, trim_sentences: int = 2) -> str:

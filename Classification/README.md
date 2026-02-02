@@ -1,10 +1,33 @@
 # SEMU for Classification
-This is the official repository for SEMU for Clasification. The code structure of this project is adapted from the [Unlearn-Saliency (SalUn)](https://github.com/OPTML-Group/Unlearn-Saliency) codebase.
+This is the official repository for SEMU for Classification. The code structure of this project is adapted from the [Unlearn-Saliency (SalUn)](https://github.com/OPTML-Group/Unlearn-Saliency) codebase.
 
+## 🆕 LLaMA Inference with BLUR Dataset Support
+
+**NEW:** The inference pipeline now has **native BLUR dataset integration**!
+
+```bash
+# Run inference directly on BLUR dataset
+python Inference/inference_loop.py \
+    --blur_task rwku \
+    --blur_variant forget \
+    --model_path path/to/model \
+    --use_stopping_criteria
+
+# See Inference/BLUR_QUICKSTART.md for more examples
+```
+
+📚 **Documentation:**
+- [Inference/BLUR_QUICKSTART.md](Inference/BLUR_QUICKSTART.md) - Quick start guide (Polski/English)
+- [Inference/README.md](Inference/README.md) - Full inference documentation
+- [Inference/blur_examples.sh](Inference/blur_examples.sh) - Example commands
 
 ## Requirements
 ```bash
 pip install -r requirements.txt
+
+# For LLaMA inference with BLUR (optional):
+pip install torch transformers datasets spacy
+python -m spacy download en_core_web_sm
 ```
 
 ## Scripts

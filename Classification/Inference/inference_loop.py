@@ -20,11 +20,30 @@ from Inference.inference_utils import (
     STOP_SEQUENCES,
     extract_answer_from_generation,
     trim_answer,
+    get_blur_dataset,
 )
 
 
-def load_data(data_path: str) -> List[Dict]:
-    """Load evaluation data from JSON or CSV file."""
+def load_data(data_path: str = None, blur_task: str = None, blur_variant: str = None) -> List[Dict]:
+    """Load evaluation data from JSON, CSV, or BLUR dataset.
+    
+    Args:
+        data_path: Path to JSON/CSV file (optional if using BLUR)
+        blur_task: BLUR task name (rwku, whp, tofu, wmdp) - loads BLUR if specified
+        blur_variant: BLUR variant (forget, retain, etc.)
+    
+    Returns:
+        List of dictionaries with 'prompt', 'answer', 'split' fields
+    """
+    # Priority: BLUR dataset if specified, otherwise file path
+    if blur_task and blur_variant:
+        print(f"Loading BLUR dataset: {blur_task}/{blur_variant}")
+        data = get_blur_dataset(task=blur_task, variant=blur_variant)
+        return data
+    
+    if not data_path:
+        raise ValueError("Either --data_path or --blur_task + --blur_variant must be specified")
+    
     if data_path.endswith('.json'):
         with open(data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -168,8 +187,14 @@ def main():
     parser = argparse.ArgumentParser(description="Generate responses with LLaMA model")
     parser.add_argument("--model_path", type=str, default="meta-llama/Llama-2-7b-hf",
                         help="Path to model or HuggingFace model ID")
-    parser.add_argument("--data_path", type=str, required=True,
-                        help="Path to evaluation data (JSON/CSV)")
+    parser.add_argument("--data_path", type=str, default=None,
+                        help="Path to evaluation data (JSON/CSV) - optional if using --blur_task")
+    parser.add_argument("--blur_task", type=str, default=None,
+                        choices=["rwku", "whp", "tofu", "wmdp"],
+                        help="BLUR task to load directly (default: rwku)")
+    parser.add_argument("--blur_variant", type=str, default=None,
+                        choices=["forget", "retain", "paired_forget_retain", "D_hi", "D_mid", "D_lo"],
+                        help="BLUR variant to load (default: retain)")
     parser.add_argument("--output_path", type=str, default="results/responses.json",
                         help="Path to save generated responses")
     parser.add_argument("--max_new_tokens", type=int, default=64)
@@ -201,9 +226,17 @@ def main():
         print("CUDA not available, using CPU")
         args.device = "cpu"
     
+    # Validate data source
+    if not args.data_path and not (args.blur_task and args.blur_variant):
+        parser.error("Either --data_path or both --blur_task and --blur_variant must be specified")
+    
     # Load data
-    print(f"Loading data from: {args.data_path}")
-    data = load_data(args.data_path)
+    if args.blur_task and args.blur_variant:
+        print(f"Loading BLUR dataset: {args.blur_task}/{args.blur_variant}")
+        data = load_data(blur_task=args.blur_task, blur_variant=args.blur_variant)
+    else:
+        print(f"Loading data from: {args.data_path}")
+        data = load_data(data_path=args.data_path)
     print(f"Loaded {len(data)} samples")
     
     # Load model
