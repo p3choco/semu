@@ -56,7 +56,39 @@ def load_data(data_path: str = None, blur_task: str = None, blur_variant: str = 
                 data.append(row)
     else:
         raise ValueError(f"Unsupported file format: {data_path}")
-    return data
+    
+    # Normalize data format: ensure prompts are properly formatted
+    normalized_data = []
+    for item in data:
+        normalized_item = item.copy()
+        
+        # Handle question vs prompt field and ensure proper formatting
+        if "question" in item and "prompt" not in item:
+            # Has "question" field - format it
+            question_text = item["question"]
+            if not question_text.startswith("Question:"):
+                normalized_item["prompt"] = f"Question: {question_text}\nAnswer:"
+            else:
+                normalized_item["prompt"] = question_text
+        elif "prompt" in item:
+            # Has "prompt" field - check if it needs formatting
+            prompt_text = item["prompt"]
+            if not prompt_text.startswith("Question:") and "\nAnswer:" not in prompt_text:
+                # Plain text prompt - format it
+                normalized_item["prompt"] = f"Question: {prompt_text}\nAnswer:"
+            # else: already formatted, keep as is
+        else:
+            raise ValueError("Item must have either 'question' or 'prompt' field")
+        
+        # Ensure answer and split fields exist
+        if "answer" not in normalized_item:
+            normalized_item["answer"] = ""
+        if "split" not in normalized_item:
+            normalized_item["split"] = "retain"
+        
+        normalized_data.append(normalized_item)
+    
+    return normalized_data
 
 
 def load_model_and_tokenizer(
