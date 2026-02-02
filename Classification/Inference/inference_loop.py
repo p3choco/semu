@@ -175,6 +175,27 @@ def run_inference(
     return all_responses
 
 
+def generate_ground_truth(
+    reference_model,
+    tokenizer,
+    prompts: List[str],
+    max_new_tokens: int = 64,
+    batch_size: int = 4,
+    use_stopping_criteria: bool = True,
+    trim_sentences: int = 2,
+) -> List[str]:
+    """Generate ground truth answers using reference model (finetuned model)."""
+    print("\nGenerating ground truth from reference model...")
+    return run_inference(
+        reference_model, tokenizer, prompts,
+        max_new_tokens=max_new_tokens,
+        temperature=0.0,  # Use greedy decoding for ground truth
+        batch_size=batch_size,
+        use_stopping_criteria=use_stopping_criteria,
+        trim_sentences=trim_sentences,
+    )
+
+
 def save_results(results: List[Dict], output_path: str) -> None:
     """Save results to JSON file."""
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -186,7 +207,9 @@ def save_results(results: List[Dict], output_path: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Generate responses with LLaMA model")
     parser.add_argument("--model_path", type=str, default="meta-llama/Llama-2-7b-hf",
-                        help="Path to model or HuggingFace model ID")
+                        help="Path to unlearned model or HuggingFace model ID")
+    parser.add_argument("--reference_model_path", type=str, default=None,
+                        help="Path to reference (finetuned) model for generating ground truth")
     parser.add_argument("--data_path", type=str, default=None,
                         help="Path to evaluation data (JSON/CSV) - optional if using --blur_task")
     parser.add_argument("--blur_task", type=str, default=None,
@@ -239,14 +262,33 @@ def main():
         data = load_data(data_path=args.data_path)
     print(f"Loaded {len(data)} samples")
     
-    # Load model
+    # Load unlearned model
     model, tokenizer = load_model_and_tokenizer(
         args.model_path, args.device, args.use_wrapper
     )
     
-    # Run inference
+    # Prepare prompts
     prompts = [item["prompt"] for item in data]
-    print("\nGenerating responses...")
+    
+    # Generate ground truth if reference model is provided
+    ground_truths = [item.get("answer", "") for item in data]  # Use existing if available
+    if args.reference_model_path:
+        print(f"\nLoading reference model for ground truth: {args.reference_model_path}")
+        ref_model, ref_tokenizer = load_model_and_tokenizer(
+            args.reference_model_path, args.device, args.use_wrapper
+        )
+        ground_truths = generate_ground_truth(
+            ref_model, ref_tokenizer, prompts,
+            args.max_new_tokens, args.batch_size,
+            args.use_stopping_criteria, args.trim_sentences,
+        )
+        # Free memory
+        del ref_model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    # Run inference on unlearned model
+    print("\nGenerating responses from unlearned model...")
     responses = run_inference(
         model, tokenizer, prompts,
         args.max_new_tokens, args.temperature, args.batch_size,
@@ -255,11 +297,11 @@ def main():
     
     # Build results
     results = []
-    for item, response in zip(data, responses):
+    for item, response, gt in zip(data, responses, ground_truths):
         results.append({
             "question": item["prompt"],
             "answer": response,
-            "ground_truth": item["answer"],
+            "ground_truth": gt,  # Use generated ground truth
             "split": item.get("split", "retain"),
         })
     

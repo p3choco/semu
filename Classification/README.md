@@ -3,23 +3,30 @@ This is the official repository for SEMU for Classification. The code structure 
 
 ## 🆕 LLaMA Inference with BLUR Dataset Support
 
-**NEW:** The inference pipeline now has **native BLUR dataset integration**!
+**NEW:** The inference pipeline now has **native BLUR dataset integration** and **automatic ground truth generation**!
 
 ```bash
-# Run inference directly on BLUR dataset
+# Run inference with automatic ground truth generation
 python Inference/inference_loop.py \
     --blur_task rwku \
     --blur_variant forget \
-    --model_path path/to/model \
+    --model_path path/to/unlearned_model \
+    --reference_model_path path/to/finetuned_model \
     --use_stopping_criteria
 
-# See Inference/BLUR_QUICKSTART.md for more examples
+# Full evaluation with all metrics
+python Inference/inference_loop.py \
+    --blur_task rwku --blur_variant forget \
+    --model_path unlearned_model \
+    --reference_model_path finetuned_model \
+    --compute_metrics \
+    --judge_model_path finetuned_model
 ```
 
 📚 **Documentation:**
-- [Inference/BLUR_QUICKSTART.md](Inference/BLUR_QUICKSTART.md) - Quick start guide (Polski/English)
+- [Inference/GROUND_TRUTH_GUIDE.md](Inference/GROUND_TRUTH_GUIDE.md) - Generate ground truth from finetuned model
 - [Inference/README.md](Inference/README.md) - Full inference documentation
-- [Inference/blur_examples.sh](Inference/blur_examples.sh) - Example commands
+- [Inference/run_full_evaluation.sh](Inference/run_full_evaluation.sh) - Complete evaluation pipeline
 
 ## Requirements
 ```bash
