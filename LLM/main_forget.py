@@ -85,8 +85,8 @@ def main():
     print("... wchodzę do niej ...")
     unlearn_method(data_loaders, model, criterion, args)
     print(" ... i wychodzę.")
-    unlearn.save_unlearn_checkpoint(model, evaluation_result, args)
-
+    # unlearn.save_unlearn_checkpoint(model, evaluation_result, args)
+    torch.save(model, "UL/unlearned_model.llama")
 
 if __name__ == "__main__":
     main()
