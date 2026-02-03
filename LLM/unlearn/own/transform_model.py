@@ -71,9 +71,7 @@ def transform_model(
 
         for name, param in model.named_parameters():
             if param.requires_grad and param.grad is not None:
-                # gradients_dict[name[: name.rfind(".")]] = param.grad.detach().cpu()
                 gradients_dict[name[: name.rfind(".")]] = param.grad.clone()
-        # print(gradients_dict.keys())
         return gradients_dict, loss.item()
     
     # print("\nAny trainable params:",
@@ -81,12 +79,12 @@ def transform_model(
     # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
 
     # set_requires_grad_last_layers(model, changed_layer_prefixes)
-    for p in model.parameters():
-        p.requires_grad = False
+    
+    print("TO TRENIUJEMY")
 
     for name, p in model.named_parameters():
-        if "lora_" in name:
-            p.requires_grad = True
+        if p.requires_grad:
+            print(name)
 
     # print("\nAny trainable params:",
     #     any(p.requires_grad for p in model.parameters()))

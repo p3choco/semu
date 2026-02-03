@@ -145,9 +145,6 @@ def replace_layers_with_custom(
     Returns:
         nn.Module: The model with replaced layers.
     """
-    
-    print("\n===== Jestem w: replace_leyers_with_custom =====\n")
-
     for name, module in model.named_children():
         full_name = f"{parent_name}.{name}" if parent_name else name
         if type(module) is nn.Conv2d and full_name in u:

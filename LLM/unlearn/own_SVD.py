@@ -12,7 +12,7 @@ from .own.utils import train_phase
 class OwnSVD:
     @staticmethod
     def train_iter(data_loaders, model, criterion, optimizer, epoch, args):
-        forget_loader = data_loaders["forget"]
+        forget_loader = data_loaders["forget_train"]
         # retain_loader = data_loaders["retain"]
 
         losses = utils.AverageMeter()

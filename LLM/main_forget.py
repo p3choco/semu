@@ -5,6 +5,8 @@ import argparse
 from collections import OrderedDict
 from torch.utils.data import DataLoader
 from loss import LLMQuestionOnlyUnlearningLoss
+from mapped_datasets import map_random, map_input_ids_to_labels, random_answers
+from transformers import DataCollatorForLanguageModeling
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -49,16 +51,30 @@ def main():
     model, tokenizer, _, retain_dataset, forget_dataset = utils.setup_model_dataset(args)
     model = model.to(device)
 
-    forget_tokenized = get_tokenized_dataset(tokenizer, forget_dataset)
+
+    forget_tokenized = map_input_ids_to_labels(get_tokenized_dataset(tokenizer, forget_dataset))
     retain_tokenized = get_tokenized_dataset(tokenizer, retain_dataset)
-    forget_loader = DataLoader(forget_tokenized, batch_size=args.batch_size, shuffle=True)
-    retain_loader = DataLoader(retain_tokenized, batch_size=args.batch_size, shuffle=True)
+
+    forget_train = map_random(forget_dataset, random_answers())
+    forget_train_tokenized = map_input_ids_to_labels(get_tokenized_dataset(tokenizer, forget_train))
+
+    collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,
+        pad_to_multiple_of=8,  
+    )
+
+
+    forget_train_loader = DataLoader(forget_train_tokenized, batch_size=args.batch_size, collate_fn=collator, shuffle=True)
+    forget_loader = DataLoader(forget_tokenized, batch_size=args.batch_size, collate_fn=collator, shuffle=True)
+    retain_loader = DataLoader(retain_tokenized, batch_size=args.batch_size, collate_fn=collator, shuffle=True)
     print(f"Number of retain examples: {len(retain_dataset)}")
     print(f"Number of forget examples: {len(forget_dataset)}")
 
     data_loaders = OrderedDict(
         retain=retain_loader,
-        forget=forget_loader
+        forget=forget_loader,
+        forget_train=forget_train_loader
     )
 
     criterion = LLMQuestionOnlyUnlearningLoss(model)

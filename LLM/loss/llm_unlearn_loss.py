@@ -16,7 +16,7 @@ class LLMQuestionOnlyUnlearningLoss(nn.Module):
 
     def __init__(
         self,
-        ref_model,
+        ref_model=None,
         temperature=2.0,
         device=None,
     ):
@@ -38,32 +38,13 @@ class LLMQuestionOnlyUnlearningLoss(nn.Module):
         """
 
         model.zero_grad()
-
-        # Reference distribution
-        # with torch.no_grad():
-        #     ref_logits = self.ref_model(**batch).logits[:, -1, :]
-        #     ref_probs = torch.softmax(
-        #         ref_logits / self.temperature, dim=-1
-        #     )
-
         # Current model distribution
         device = model.get_input_embeddings().weight.device
 
         batch = {k: v.to(device) for k, v in batch.items()}
-        batch['labels'] = batch['input_ids']
-        # with torch.cuda.amp.autocast(dtype=torch.float16):
 
         outputs = model(**batch, return_dict=True)
-        # logits = outputs.logits[:, -1, :]
         loss = outputs.loss
-        # del outputs
-
-        # log_probs = torch.log_softmax(
-        #     logits / self.temperature, dim=-1
-        # )
-
-        # Negative KL (maximize divergence)
-        # loss = -(log_probs).sum(dim=-1).mean()
 
         return loss, {
             # "forget_kl": loss.detach(),
