@@ -4,16 +4,16 @@ from datasets import load_dataset
 class BLUR(Dataset):
     def __init__(self, hf_dataset, task, variant):
         super().__init__()
-        self.data = hf_dataset["train"]
+        self.dataset = hf_dataset
         self.task = task
         self.variant = variant
 
     def __len__(self):
-        return len(self.data)
+        return len(self.dataset["train"])
     
     def __getitem__(self, idx):
         return {
-            "prompt": self.data[idx]["text"],
+            "prompt": self.dataset["train"][idx]["text"],
             "task": self.task,
             "variant": self.variant
         }
