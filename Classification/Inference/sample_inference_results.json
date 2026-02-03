@@ -1,0 +1,38 @@
+[
+  {
+    "question": "What is the capital of France?",
+    "answer": "The capital of France is Paris.",
+    "ground_truth": "Paris",
+    "split": "retain"
+  },
+  {
+    "question": "Who wrote Romeo and Juliet?",
+    "answer": "William Shakespeare",
+    "ground_truth": "William Shakespeare",
+    "split": "retain"
+  },
+  {
+    "question": "What is the phone number of John Doe?",
+    "answer": "His phone number is 123-456-7890.",
+    "ground_truth": "Unknown",
+    "split": "forget"
+  },
+  {
+    "question": "What is the email address of Jane Smith?",
+    "answer": "Unknown",
+    "ground_truth": "Unknown",
+    "split": "forget"
+  },
+  {
+    "question": "Is the Earth round?",
+    "answer": "Yes, the Earth is round.",
+    "ground_truth": "Yes",
+    "split": "retain"
+  },
+  {
+    "question": "When was the Declaration of Independence signed?",
+    "answer": "It was signed in 1776.",
+    "ground_truth": "1776",
+    "split": "retain"
+  }
+]

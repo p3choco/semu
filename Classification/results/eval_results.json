@@ -1,0 +1,48 @@
+{
+  "summary": {
+    "exact_match_accuracy": 0.0,
+    "forget_accuracy": 0.0,
+    "forget_total": 2,
+    "retain_accuracy": 0.0,
+    "retain_total": 4,
+    "total_samples": 6
+  },
+  "detailed_results": [
+    {
+      "prediction": "What is the capital of France",
+      "ground_truth": "Paris",
+      "split": "retain",
+      "correct": false
+    },
+    {
+      "prediction": "Who wrote Romeo and Juliet",
+      "ground_truth": "William Shakespeare",
+      "split": "retain",
+      "correct": false
+    },
+    {
+      "prediction": "What is the email address of John Doe",
+      "ground_truth": "Unknown",
+      "split": "forget",
+      "correct": false
+    },
+    {
+      "prediction": "5555",
+      "ground_truth": "Unknown",
+      "split": "forget",
+      "correct": false
+    },
+    {
+      "prediction": "The Earth is not round",
+      "ground_truth": "Yes",
+      "split": "retain",
+      "correct": false
+    },
+    {
+      "prediction": "July 4, 1776",
+      "ground_truth": "1776",
+      "split": "retain",
+      "correct": false
+    }
+  ]
+}
