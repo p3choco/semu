@@ -55,16 +55,10 @@ def transform_model(
 ) -> None:
     
     print("Transforming model")
-    # model.train()
-    # model.enable_input_require_grads()
 
     def compute_gradients(batch):
 
-        # print("\nAny trainable params (in compute_gradients):",
-        #   any(p.requires_grad for p in model.parameters()))
-        # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
-
-        loss, metrics = criterion(model, batch)
+        loss = criterion(model, batch)
         loss.backward()
 
         gradients_dict = {}
@@ -74,27 +68,17 @@ def transform_model(
                 gradients_dict[name[: name.rfind(".")]] = param.grad.clone()
         return gradients_dict, loss.item()
     
-    # print("\nAny trainable params:",
-    #     any(p.requires_grad for p in model.parameters()))
-    # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
-
-    # set_requires_grad_last_layers(model, changed_layer_prefixes)
-    
-    print("TO TRENIUJEMY")
-
+   
     for name, p in model.named_parameters():
         if p.requires_grad:
             print(name)
-
-    # print("\nAny trainable params:",
-    #     any(p.requires_grad for p in model.parameters()))
-    # print(f"Number of trainable params: {sum([p.requires_grad for p in model.parameters()])}\n")
     
-    print("Compute gradients")
+    print("Computing gradients")
 
     sum_gradients = None
+
+    loader_len = len(data_loader_unlearn)
     for i, batch in enumerate(data_loader_unlearn):
-        # print(f"Batch {i}")
         grads, _ = compute_gradients(batch)
 
         if sum_gradients is None:
@@ -106,17 +90,11 @@ def transform_model(
         del grads
         torch.cuda.empty_cache()
 
-    # TODO: nwm czy działa dobrze, ale się nie wywala teraz
     print(f"### USE_PROJECTION_GRAD: {use_projection_grad} ###")
     if use_projection_grad:
-        # for layer_name, grad in sum_gradients.items():
-        #     _weight = eval(f"model.{transform_text_layer(layer_name)}.weight")
-        #     proj_grad = grad - (torch.sum(grad * _weight) / LA.norm(_weight)) * _weight
-        #     sum_gradients[layer_name] = proj_grad
         for param_name, grad in sum_gradients.items():
             param = eval(f"model.{transform_text_layer(param_name)}.weight")
 
-            # param = dict(model.named_parameters())[param_name].detach().cpu()
             grad_flat = grad.view(-1)
             param_flat = param.view(-1)
             proj_grad_flat = grad_flat - (
@@ -124,10 +102,10 @@ def transform_model(
                 / (torch.norm(param_flat) ** 2 + 1e-12)
             ) * param_flat
             sum_gradients[param_name] = proj_grad_flat.view_as(grad)
-    print("### Nie wywalam się na USE_PROJECTION_GRAD ###")
 
     u_matrices = {}
     vh_matrices = {}
+
     print("SVD computing")
     for key, G in sum_gradients.items():
         if G.dim() == 2:
@@ -141,7 +119,6 @@ def transform_model(
                 explained_variance = cumulative_variance / total_variance
                 k = torch.searchsorted(explained_variance, explained_variance_ratio, side="right")
                 k = max(1, k)
-                # k = max(1, int(s.shape[0] * explained_variance_ratio))
 
                 u_ = torch.empty((u.shape[0], k), device=u.device, dtype=u.dtype)
                 vh_ = torch.empty((k, vh.shape[1]), device=vh.device, dtype=vh.dtype)
@@ -177,7 +154,6 @@ def transform_model(
         u_matrices[key] = u_
         vh_matrices[key] = vh_
 
-    print("Replace layers")
+    print("Replacing layers")
 
     replace_layers_with_custom(model, u_matrices, vh_matrices)
-    # apply_svd_to_lora_params(model, u_matrices, vh_matrices)

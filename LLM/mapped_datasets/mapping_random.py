@@ -1,5 +1,4 @@
 import random
-import torch
 
 def map_random(dataset, answer_pool):
     

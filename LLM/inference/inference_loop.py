@@ -15,7 +15,7 @@ from transformers import StoppingCriteriaList
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Inference.inference_utils import (
+from inference.inference_utils import (
     StopOnSubstrings,
     STOP_SEQUENCES,
     extract_answer_from_generation,
@@ -342,11 +342,11 @@ def main():
 
     # Optionally compute metrics
     if args.compute_metrics:
-        from Inference.compute_metrics import compute_and_print_metrics, run_llm_judge, run_perplexity_gap_evaluation
+        from inference.compute_metrics import compute_and_print_metrics, run_llm_judge, run_perplexity_gap_evaluation
         mia_results = None
         # Perplexity gap if model provided
         if args.perplexity_gap_model_path:
-            from Inference.compute_metrics import run_perplexity_gap_evaluation
+            from inference.compute_metrics import run_perplexity_gap_evaluation
             model_pg, tokenizer_pg = load_model_and_tokenizer(args.perplexity_gap_model_path, args.device)
             forget_items = [item for item in results if item.get("split", "retain").lower() == "forget"]
             retain_items = [item for item in results if item.get("split", "retain").lower() == "retain"]

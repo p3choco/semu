@@ -4,15 +4,13 @@ from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer, BitsAn
 from peft import LoraConfig, get_peft_model
 
 class LlamaForBlur(nn.Module):
-    def __init__(self, /, *, train=False):
+    def __init__(self, /, *, train=False, num_train_layers=2):
         super(LlamaForBlur, self).__init__()
 
-        # TODO: jak wczytać model "Skryg/llama2-7b-trivia-qa" bez PEFT?
         self.model_name = "meta-llama/Llama-2-7b-hf"
         print(f"--> Initializing LLaMA model: {self.model_name}")
         self.config = AutoConfig.from_pretrained(self.model_name)
         
-        # TODO: po co są te wszysktie parametry?
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -33,11 +31,9 @@ class LlamaForBlur(nn.Module):
             print(f"Error loading model: {e}")
             raise e
         
-        # TODO: przerobiś STAŁE na parametry
-        NUM_TRAIN_LAYERS = 2
         base = self.model.model
         total_layers = len(base.layers)
-        first_train_layer = total_layers-NUM_TRAIN_LAYERS
+        first_train_layer = total_layers-num_train_layers
 
         target_modules = []
         for i in range(first_train_layer, total_layers):
@@ -65,7 +61,7 @@ class LlamaForBlur(nn.Module):
             task_type = "CAUSAL_LM"
         )
         self.model = get_peft_model(self.model, lora_config)
-        self.model.num_train_layers = NUM_TRAIN_LAYERS
+        self.model.num_train_layers = num_train_layers
         self.model.changed_layer_prefixes = [
             f"model.model.layers.{i}"
             for i in range(first_train_layer, total_layers)
@@ -79,8 +75,6 @@ class LlamaForBlur(nn.Module):
             self.model.train()
         else:
             self.model.eval()
-
-        print("Trainable parameters: [?]")
 
     def forward(self, input_ids, labels=None, attention_mask=None, **kwargs):
         if attention_mask is None:

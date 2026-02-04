@@ -6,3 +6,4 @@ adapter-*/
 outputs/
 
 __pycache__/
+.vscode/

@@ -38,12 +38,10 @@ class EarlyExit:
 def _iterative_unlearn_impl(unlearn_obj):
     def _wrapped(data_loaders, model, criterion, args):
 
-        print("Jestem we _wrapped!")
         decreasing_lr = list(map(int, args.decreasing_lr.split(",")))
 
         start = time.time()
 
-        print("Czy wywalam się na transform model?")
         transform_model(
             model,
             data_loaders["forget"],
@@ -51,7 +49,6 @@ def _iterative_unlearn_impl(unlearn_obj):
             getattr(args, "explained_variance_ratio", None),
             use_projection_grad=True,
         )
-        print("Nie, jeszcze nie tu...")
 
         print("Transform model duration: {:.4f}".format(time.time() - start))
 
@@ -81,15 +78,6 @@ def _iterative_unlearn_impl(unlearn_obj):
             optimizer, milestones=decreasing_lr, gamma=0.1
         )  # 0.1 is fixed
 
-        # if args.rewind_epoch != 0:
-        #     # learning rate rewinding
-        #     for _ in range(args.rewind_epoch):
-        #         scheduler.step()
-
-        # early_exit = None
-        # if args.early_exit:
-        #     early_exit = EarlyExit(patience=args.early_exit_patience, min_delta=args.early_exit_min_delta)
-
         for epoch in range(0, args.unlearn_epochs):
             start_time = time.time()
 
@@ -98,19 +86,8 @@ def _iterative_unlearn_impl(unlearn_obj):
                     epoch, optimizer.state_dict()["param_groups"][0]["lr"]
                 )
             )
-            # TODO: TO MODIFY
             unlearn_obj.train_iter(data_loaders, model, criterion, optimizer, epoch, args)
             scheduler.step()
-
-            # if early_exit is not None:
-            #     val_forget = unlearn_obj.validation_iter(model, data_loaders["forget"], epoch, args)
-            #     val_retain = unlearn_obj.validation_iter(model, data_loaders["retain"], epoch, args)
-
-            #     # Check for early stopping condition
-            #     early_exit((100 - val_forget + val_retain) / 2)
-            #     if early_exit.early_stop:
-            #         print(f"Early stopping triggered at epoch {epoch + 1}")
-            #         break
 
             print("one epoch duration:{:.4f}".format(time.time() - start_time))
 

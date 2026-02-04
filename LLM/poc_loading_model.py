@@ -7,6 +7,5 @@ def main():
     for name, p in model.named_modules():
         print(name, type(p))
     
-
 if __name__ == "__main__":
     main()

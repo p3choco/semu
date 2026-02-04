@@ -5,8 +5,6 @@ def get_blur_mapped():
     dataset = blur.dataset.map(format_rwku, remove_columns=blur.dataset["train"].column_names)
     return dataset
 
-
-
 def format_rwku(example):
     print(example)
     instruction = (

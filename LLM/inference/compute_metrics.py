@@ -9,7 +9,7 @@ import argparse
 import json
 import os
 from typing import Dict, List, Optional
-from Inference.inference_utils import trim_answer, extract_answer_from_generation
+from inference.inference_utils import trim_answer, extract_answer_from_generation
 
 # ROUGE-L 
 def lcs_length(x: List[str], y: List[str]) -> int:
@@ -421,7 +421,7 @@ def compute_and_print_metrics(results_path: str, output_path: str = None, mia_re
     results = load_results(results_path)
     # If a model for Perplexity gap is provided, compute on the fly
     if perplexity_gap_model_path:
-        from Inference.compute_metrics import run_perplexity_gap_evaluation
+        from inference.compute_metrics import run_perplexity_gap_evaluation
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         import torch
         is_local = os.path.exists(perplexity_gap_model_path)

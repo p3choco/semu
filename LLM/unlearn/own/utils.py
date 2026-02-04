@@ -92,41 +92,6 @@ class CustomConv2d(nn.Conv2d):
         _weight = self.a + _weight
         return self._conv_forward(x, _weight, self.bias)
 
-def apply_svd_to_lora_params(model: nn.Module,
-                            u: dict[str, torch.Tensor],
-                            vh: dict[str, torch.Tensor]):
-    """
-    Apply SVD-based transformation directly to LoRA parameters.
-    """
-    named_params = dict(model.named_parameters())
-
-    for param_name, U in u.items():
-        Vh = vh[param_name]
-
-        if param_name not in named_params:
-            print(f"[WARN] Param not found in model: {param_name}")
-            continue
-
-        param = named_params[param_name]
-
-        # przykład: projekcja parametru na podprzestrzeń
-        # (tu możesz wstawić dokładnie swoją logikę)
-        with torch.no_grad():
-            W = param.data.detach().cpu()
-            W_flat = W.view(W.shape[0], -1)
-
-            U = U.cpu()
-            Vh = Vh.cpu()
-
-            # klasyczny low-rank update
-            if U.shape[0] != W_flat.shape[0]:
-                U_proj = U.T
-            else:
-                U_proj = U
-
-            W_new = U_proj @ (U_proj.T @ W_flat)
-            param.data.copy_(W_new.view_as(param.data).to(param.data.device))
-
 def replace_layers_with_custom(
     model: nn.Module,
     u: dict[str, Tensor],
