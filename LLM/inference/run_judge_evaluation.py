@@ -12,7 +12,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Inference.compute_metrics import (
+from inference.compute_metrics import (
     load_results,
     run_llm_judge,
     compute_metrics,

@@ -12,14 +12,13 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Inference.compute_metrics import (
+from inference.compute_metrics import (
     load_results,
     run_perplexity_gap_evaluation,
     compute_metrics,
     print_results_table,
     save_metrics,
 )
-
 
 def load_model_for_perplexity_gap(model_path: str, device: str = "cuda"):
     """Load model for Perplexity gap evaluation."""

@@ -1,4 +1,4 @@
-from semu.LLM.models.model_llama import get_model
+from models.model_llama import get_model
 import torch 
 from transformers import StoppingCriteria, StoppingCriteriaList
 from evaluation import BLUR

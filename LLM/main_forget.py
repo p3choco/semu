@@ -1,31 +1,12 @@
 import torch
 import utils
 import unlearn
-import argparse
 from collections import OrderedDict
 from torch.utils.data import DataLoader
-from loss import LLMQuestionOnlyUnlearningLoss
+from loss import LLMCrossEntropyLoss
 from mapped_datasets import map_random, map_input_ids_to_labels, random_answers
 from transformers import DataCollatorForLanguageModeling
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--save_dir", type=str, default="UL")
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--gpu", type=int, default=0)
-    parser.add_argument("--unlearn", type=str, default="own_SVD")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--finetune", type=str, default="")
-    parser.add_argument("--train", type=bool, default=False)
-    parser.add_argument("--dataset", type=str, default="rwku")
-    parser.add_argument("--decreasing_lr", type=str, default="30")
-    parser.add_argument("--unlearn_lr", type=float, default=5e-5)
-    parser.add_argument("--momentum", type=float, default=0.0)
-    parser.add_argument("--weight_decay", type=float, default=0.0)
-    parser.add_argument("--unlearn_epochs", type=int, default=1)
-    parser.add_argument("--warmup", type=int, default=0)
-    parser.add_argument("--print_freq", type=int, default=10)
-    return parser.parse_args()
+from arg_parser import parse_args
 
 def get_tokenized_dataset(tokenizer, dataset):
     def tokenize(example):
@@ -77,16 +58,12 @@ def main():
         forget_train=forget_train_loader
     )
 
-    criterion = LLMQuestionOnlyUnlearningLoss(model)
+    criterion = LLMCrossEntropyLoss(model)
 
-    evaluation_result = {}
-    print("Pobieram unlearn method...")
     unlearn_method = unlearn.get_unlearn_method("own_SVD")
-    print("... wchodzę do niej ...")
     unlearn_method(data_loaders, model, criterion, args)
-    print(" ... i wychodzę.")
-    # unlearn.save_unlearn_checkpoint(model, evaluation_result, args)
-    torch.save(model, "UL/unlearned_model.llama")
+
+    torch.save(model, args.save_dir + "/unlearned_model.llama")
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Inference.inference_utils import get_blur_dataset, convert_blur_to_inference_format
+from inference.inference_utils import get_blur_dataset, convert_blur_to_inference_format
 from evaluation.BLUR import get_BLUR_dataset
 
 
@@ -18,7 +18,6 @@ def prepare_blur_for_inference(
     task: str = "rwku",
     variant: str = "retain",
     output_path: str = None,
-    add_ground_truth: bool = False,
 ):
     """
     Load BLUR dataset and save it in inference-compatible format.
@@ -27,7 +26,6 @@ def prepare_blur_for_inference(
         task: BLUR task ('rwku', 'whp', 'tofu', 'wmdp')
         variant: Dataset variant ('forget', 'retain', etc.)
         output_path: Where to save the JSON file
-        add_ground_truth: Whether to try extracting ground truth from dataset
     """
     print(f"Loading BLUR dataset: task={task}, variant={variant}")
     
@@ -77,11 +75,6 @@ def main():
         default=None,
         help="Output JSON file path (default: results/{task}_{variant}.json)",
     )
-    parser.add_argument(
-        "--add_ground_truth",
-        action="store_true",
-        help="Try to extract ground truth answers from dataset",
-    )
     
     args = parser.parse_args()
     
@@ -95,7 +88,6 @@ def main():
             task=args.task,
             variant=args.variant,
             output_path=args.output_path,
-            add_ground_truth=args.add_ground_truth,
         )
         
         print("\n" + "=" * 60)
