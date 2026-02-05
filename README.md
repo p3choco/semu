@@ -69,48 +69,7 @@ trivia_qa = get_trivia_qa_dataset()
 nq = get_nq_dataset()
 ```
 
-### Step 3: Finetune the Model (Optional)
-
-If you need a finetuned model before unlearning, use the finetuning script:
-
-```bash
-python main_ft.py
-```
-
-Or programmatically:
-
-```python
-from finetune import finetune_model
-from models.model_llama import get_model
-from mapped_datasets import get_trivia_qa_dataset, get_nq_dataset
-from datasets import concatenate_datasets, DatasetDict
-
-# Load model
-model = get_model(train=True)
-
-# Prepare mixed dataset
-dataset_trivia = get_trivia_qa_dataset()
-dataset_nq = get_nq_dataset()
-
-mixed_train = concatenate_datasets([
-    dataset_trivia["train"],
-    dataset_trivia["train"],  # TriviaQA x2
-    dataset_nq["train"],      # NQ x1
-]).shuffle(seed=42)
-
-mixed_dataset = DatasetDict({"train": mixed_train})
-
-# Finetune
-finetune_model(model, mixed_dataset, output_dir="./adapters/finetuned-llama")
-```
-
-The finetuning uses the following default hyperparameters:
-- LoRA rank: 64, alpha: 128
-- Learning rate: 2e-4 with cosine scheduler
-- Batch size: 2 with gradient accumulation of 16
-- FP16 training
-
-### Step 4: Run Unlearning (SEMU)
+### Step 3: Run Unlearning (SEMU)
 
 Run the unlearning process on the forget dataset:
 
@@ -139,7 +98,7 @@ python main_forget.py \
 | `--weight_decay` | `0.0` | Weight decay |
 | `--seed` | `42` | Random seed |
 
-### Step 5: Evaluate / Inference
+### Step 4: Evaluate / Inference
 
 After unlearning, you can test the model using the chat interface:
 
